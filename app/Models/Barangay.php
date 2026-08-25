@@ -14,11 +14,14 @@ class Barangay extends Model
         'is_active',
     ];
 
-    protected $casts = [
-        'latitude'  => 'decimal:7',
-        'longitude' => 'decimal:7',
-        'is_active' => 'boolean',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'latitude'  => 'decimal:7',
+            'longitude' => 'decimal:7',
+            'is_active' => 'boolean',
+        ];
+    }
 
     // Barangay is a static seeded table — expose coords
     // for Haversine distance computation in worker search.
