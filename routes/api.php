@@ -1,6 +1,8 @@
 <?php
 
+use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Auth\EmailVerificationController;
+use App\Http\Controllers\Auth\GoogleAuthController;
 use App\Http\Controllers\Auth\RegisterController;
 use Illuminate\Support\Facades\Route;
 
@@ -10,6 +12,19 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 */
 Route::prefix('auth')->group(function () {
-    Route::post('register',    [RegisterController::class, 'register']);
-    Route::post('verify-otp',  [EmailVerificationController::class, 'verify']);
+    Route::post('register',        [RegisterController::class, 'register']);
+    Route::post('login',           [AuthController::class, 'login']);
+    Route::post('google',          [GoogleAuthController::class, 'handleGoogleToken']);
+    Route::post('email/verify',    [EmailVerificationController::class, 'verify']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Protected Routes — valid Sanctum token required
+|--------------------------------------------------------------------------
+*/
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('auth/logout',                       [AuthController::class, 'logout']);
+    Route::post('auth/google/complete-profile',      [GoogleAuthController::class, 'completeProfile']);
+    Route::get('user',                               [AuthController::class, 'me']);
 });

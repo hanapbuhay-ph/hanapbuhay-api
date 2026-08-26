@@ -4,8 +4,10 @@ namespace App\Models;
 
 use Database\Factories\UserFactory;
 use Laravel\Sanctum\HasApiTokens;
+use App\Models\WorkerProfile;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -47,5 +49,10 @@ class User extends Authenticatable
     public function barangay(): BelongsTo
     {
         return $this->belongsTo(Barangay::class);
+    }
+
+    public function workerProfile(): HasOne
+    {
+        return $this->hasOne(WorkerProfile::class);
     }
 }
