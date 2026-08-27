@@ -5,8 +5,10 @@ namespace App\Services\Auth;
 use App\Exceptions\Auth\EmailNotVerifiedException;
 use App\Exceptions\Auth\InvalidCredentialsException;
 use App\Http\Requests\Auth\CompleteProfileRequest;
+use App\Models\OtpCode;
 use App\Models\User;
 use App\Models\WorkerProfile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -91,6 +93,49 @@ class AuthService
         });
 
         return $user->load('barangay');
+    }
+
+    /**
+     * Resends an email verification OTP.
+     *
+     * Returns an array with keys:
+     *   - 'already_verified' (bool)
+     *   - 'user_not_found'   (bool)
+     *   - 'otp'             (string|null) — only set when a new OTP was created
+     *   - 'email'           (string|null)
+     */
+    public function resendOtp(string $email): array
+    {
+        $user = User::where('email', $email)->first();
+
+        if ($user === null) {
+            return ['user_not_found' => true, 'already_verified' => false, 'otp' => null, 'email' => null];
+        }
+
+        if ($user->email_verified_at !== null) {
+            return ['user_not_found' => false, 'already_verified' => true, 'otp' => null, 'email' => null];
+        }
+
+        $otp = DB::transaction(function () use ($email): string {
+            OtpCode::where('email', $email)
+                ->where('type', 'email_verification')
+                ->whereNull('used_at')
+                ->update(['used_at' => Carbon::now()]);
+
+            $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+
+            OtpCode::create([
+                'email'      => $email,
+                'code'       => $code,
+                'type'       => 'email_verification',
+                'expires_at' => Carbon::now()->addMinutes(10),
+                'used_at'    => null,
+            ]);
+
+            return $code;
+        });
+
+        return ['user_not_found' => false, 'already_verified' => false, 'otp' => $otp, 'email' => $email];
     }
 
     /**

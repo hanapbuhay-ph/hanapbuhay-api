@@ -6,14 +6,58 @@ use App\Exceptions\Auth\EmailNotVerifiedException;
 use App\Exceptions\Auth\InvalidCredentialsException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Requests\Auth\ResendOtpRequest;
+use App\Mail\OtpMail;
 use App\Services\Auth\AuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\RateLimiter;
 
 class AuthController extends Controller
 {
     public function __construct(private readonly AuthService $authService)
     {
+    }
+
+    public function resendOtp(ResendOtpRequest $request): JsonResponse
+    {
+        $email = $request->validated('email');
+        $key   = 'resend-otp:' . $email;
+
+        if (RateLimiter::tooManyAttempts($key, 3)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Too many requests. Please wait before requesting another code.',
+            ], 429);
+        }
+
+        RateLimiter::hit($key, 600);
+
+        $result = $this->authService->resendOtp($email);
+
+        if ($result['user_not_found']) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Verification code resent to your email.',
+            ]);
+        }
+
+        if ($result['already_verified']) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Your email is already verified. Please log in.',
+            ]);
+        }
+
+        Mail::to($result['email'])->send(
+            new OtpMail($result['otp'], 'Your Email Verification Code')
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Verification code resent to your email.',
+        ]);
     }
 
     public function login(LoginRequest $request): JsonResponse
