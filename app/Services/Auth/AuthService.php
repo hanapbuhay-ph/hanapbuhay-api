@@ -177,6 +177,36 @@ class AuthService
     }
 
     /**
+     * Verifies a password reset OTP and returns a short-lived reset_token.
+     *
+     * Returns the reset_token string on success, or null if the OTP is
+     * invalid, expired, already used, or the email is not registered.
+     */
+    public function verifyResetOtp(string $email, string $code): ?string
+    {
+        $user = User::where('email', $email)->first();
+
+        if ($user === null) {
+            return null;
+        }
+
+        $otp = OtpCode::validFor($email, 'password_reset')
+            ->where('code', $code)
+            ->latest()
+            ->first();
+
+        if ($otp === null) {
+            return null;
+        }
+
+        $resetToken = \Illuminate\Support\Str::random(64);
+
+        $otp->update(['reset_token' => $resetToken]);
+
+        return $resetToken;
+    }
+
+    /**
      * Shape the user object returned in every auth response.
      * Single place to change the auth response user shape.
      */

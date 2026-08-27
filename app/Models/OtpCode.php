@@ -14,6 +14,7 @@ class OtpCode extends Model
         'type',
         'expires_at',
         'used_at',
+        'reset_token',
     ];
 
     protected function casts(): array
