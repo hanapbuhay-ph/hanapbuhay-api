@@ -55,7 +55,7 @@ class WorkerSearchService
             'user.barangay',
             'serviceCategories',
             'verificationDocuments',
-            'ratings' => fn ($q) => $q->with('rater')->latest()->limit(10),
+            'ratings' => fn ($q) => $q->with('ratedByUser')->latest()->limit(10),
         ])->find($workerProfileId);
 
         if ($profile === null) {
@@ -144,7 +144,7 @@ class WorkerSearchService
             'verification_status' => $profile->verification_status,
             'availability_status' => $profile->availability_status,
             'reviews'             => $profile->ratings->map(fn ($r) => [
-                'rated_by_name' => $r->rater?->name,
+                'rated_by_name' => $r->ratedByUser?->name,
                 'score'         => $r->score,
                 'comment'       => $r->comment,
                 'created_at'    => $r->created_at?->toISOString(),

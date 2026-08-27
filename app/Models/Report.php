@@ -25,7 +25,6 @@ class Report extends Model
     {
         return [
             'evidence_paths' => 'array',
-            'resolved_at'    => 'datetime',
         ];
     }
 

@@ -12,25 +12,19 @@ class RatingReview extends Model
 
     protected $table = 'ratings_reviews';
 
-    protected $fillable = [
-        'booking_id',
-        'rated_by',
-        'rated_user',
-        'score',
-        'comment',
-    ];
+    protected $fillable = ['booking_id', 'rated_by', 'rated_user', 'score', 'comment'];
 
     public function booking(): BelongsTo
     {
         return $this->belongsTo(Booking::class);
     }
 
-    public function rater(): BelongsTo
+    public function ratedByUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'rated_by');
     }
 
-    public function ratee(): BelongsTo
+    public function ratedUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'rated_user');
     }

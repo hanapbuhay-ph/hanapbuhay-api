@@ -5,15 +5,21 @@ namespace App\Http\Controllers\Booking;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Booking\CancelBookingRequest;
 use App\Http\Requests\Booking\CreateBookingRequest;
+use App\Http\Requests\Booking\RateBookingRequest;
 use App\Models\Booking;
 use App\Models\User;
 use App\Services\Booking\BookingService;
+use App\Services\Booking\RatingService;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class BookingController extends Controller
 {
-    public function __construct(private readonly BookingService $service) {}
+    public function __construct(
+        private readonly BookingService $service,
+        private readonly RatingService $ratingService,
+    ) {}
 
     public function store(CreateBookingRequest $request): JsonResponse
     {
@@ -174,6 +180,52 @@ class BookingController extends Controller
         }
 
         return response()->json(['success' => true, 'message' => 'Booking completed.', 'data' => ['booking' => $result]]);
+    }
+
+    public function rate(RateBookingRequest $request, int $id): JsonResponse
+    {
+        $booking = Booking::with('worker.workerProfile')->find($id);
+
+        if (! $booking) {
+            return response()->json(['success' => false, 'message' => 'Booking not found.'], 404);
+        }
+
+        if ($request->user()->cannot('rate', $booking)) {
+            return response()->json(['success' => false, 'message' => 'Forbidden.'], 403);
+        }
+
+        if ($booking->status !== 'completed') {
+            return response()->json([
+                'success' => false,
+                'message' => 'You can only rate a completed booking.',
+            ], 422);
+        }
+
+        try {
+            $rating = $this->ratingService->rate(
+                $booking,
+                $request->user(),
+                $request->integer('score'),
+                $request->input('comment'),
+            );
+        } catch (UniqueConstraintViolationException) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You have already rated this booking.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Review submitted.',
+            'data'    => [
+                'rating' => [
+                    'id'      => $rating->id,
+                    'score'   => $rating->score,
+                    'comment' => $rating->comment,
+                ],
+            ],
+        ], 201);
     }
 
     private function formatBooking(Booking $booking): array

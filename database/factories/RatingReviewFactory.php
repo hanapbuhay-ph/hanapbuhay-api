@@ -15,7 +15,7 @@ class RatingReviewFactory extends Factory
             'rated_by'   => User::factory(),
             'rated_user' => User::factory(),
             'score'      => $this->faker->numberBetween(1, 5),
-            'comment'    => $this->faker->sentence(),
+            'comment'    => $this->faker->optional()->sentence(),
         ];
     }
 }
