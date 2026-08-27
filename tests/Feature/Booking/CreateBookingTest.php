@@ -9,22 +9,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-function makeApprovedWorker(): User
-{
-    $barangay = Barangay::factory()->create();
-    $worker   = User::factory()->create(['role' => 'worker', 'barangay_id' => $barangay->id]);
-    WorkerProfile::factory()->create([
-        'user_id'             => $worker->id,
-        'verification_status' => 'approved',
-    ]);
-    return $worker;
-}
-
-function makeClient(): User
-{
-    return User::factory()->create(['role' => 'client']);
-}
-
 function validPayload(int $workerId, int $categoryId): array
 {
     return [
@@ -36,8 +20,8 @@ function validPayload(int $workerId, int $categoryId): array
 }
 
 it('allows a client to create a booking (happy path)', function () {
-    $client   = makeClient();
-    $worker   = makeApprovedWorker();
+    $client   = makeBookingClient();
+    $worker   = makeApprovedBookingWorker();
     $category = ServiceCategory::factory()->create();
 
     $response = $this->actingAs($client)
@@ -50,8 +34,8 @@ it('allows a client to create a booking (happy path)', function () {
 });
 
 it('generates booking_code in HB-YYYY-XXXXX format', function () {
-    $client   = makeClient();
-    $worker   = makeApprovedWorker();
+    $client   = makeBookingClient();
+    $worker   = makeApprovedBookingWorker();
     $category = ServiceCategory::factory()->create();
 
     $response = $this->actingAs($client)
@@ -62,7 +46,7 @@ it('generates booking_code in HB-YYYY-XXXXX format', function () {
 });
 
 it('returns 403 when a worker tries to create a booking', function () {
-    $worker   = makeApprovedWorker();
+    $worker   = makeApprovedBookingWorker();
     $category = ServiceCategory::factory()->create();
 
     $this->actingAs($worker)
@@ -71,7 +55,7 @@ it('returns 403 when a worker tries to create a booking', function () {
 });
 
 it('returns 422 when the worker is not verified', function () {
-    $client   = makeClient();
+    $client   = makeBookingClient();
     $category = ServiceCategory::factory()->create();
     $worker   = User::factory()->create(['role' => 'worker']);
     WorkerProfile::factory()->create([
@@ -86,11 +70,11 @@ it('returns 422 when the worker is not verified', function () {
 });
 
 it('returns 422 when scheduled_at is in the past', function () {
-    $client   = makeClient();
-    $worker   = makeApprovedWorker();
+    $client   = makeBookingClient();
+    $worker   = makeApprovedBookingWorker();
     $category = ServiceCategory::factory()->create();
 
-    $payload              = validPayload($worker->id, $category->id);
+    $payload                 = validPayload($worker->id, $category->id);
     $payload['scheduled_at'] = now()->subDay()->toDateTimeString();
 
     $this->actingAs($client)
@@ -101,7 +85,7 @@ it('returns 422 when scheduled_at is in the past', function () {
 
 it('returns 422 when client tries to book themselves', function () {
     $category = ServiceCategory::factory()->create();
-    $client   = makeClient();
+    $client   = makeBookingClient();
 
     $this->actingAs($client)
         ->postJson('/api/bookings', validPayload($client->id, $category->id))
@@ -110,7 +94,7 @@ it('returns 422 when client tries to book themselves', function () {
 });
 
 it('returns 422 when required fields are missing', function () {
-    $client = makeClient();
+    $client = makeBookingClient();
 
     $this->actingAs($client)
         ->postJson('/api/bookings', [])

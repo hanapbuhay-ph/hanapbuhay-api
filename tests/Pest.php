@@ -44,7 +44,30 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+// ── Booking helpers ──────────────────────────────────────────────────────────
+
+function makeBookingClient(): \App\Models\User
 {
-    // ..
+    return \App\Models\User::factory()->create(['role' => 'client']);
+}
+
+function makeApprovedBookingWorker(): \App\Models\User
+{
+    $barangay = \App\Models\Barangay::factory()->create();
+    $worker   = \App\Models\User::factory()->create(['role' => 'worker', 'barangay_id' => $barangay->id]);
+    \App\Models\WorkerProfile::factory()->create([
+        'user_id'             => $worker->id,
+        'verification_status' => 'approved',
+    ]);
+    return $worker;
+}
+
+function makeWorkerForListing(string $verificationStatus = 'approved'): \App\Models\User
+{
+    $worker = \App\Models\User::factory()->create(['role' => 'worker']);
+    \App\Models\WorkerProfile::factory()->create([
+        'user_id'             => $worker->id,
+        'verification_status' => $verificationStatus,
+    ]);
+    return $worker;
 }

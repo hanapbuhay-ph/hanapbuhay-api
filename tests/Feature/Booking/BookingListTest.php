@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Barangay;
 use App\Models\Booking;
 use App\Models\ServiceCategory;
 use App\Models\User;
@@ -21,20 +20,10 @@ function createBookingFor(User $client, User $worker, string $status = 'pending'
     ]);
 }
 
-function makeWorkerWithProfile(string $verificationStatus = 'approved'): User
-{
-    $worker = User::factory()->create(['role' => 'worker']);
-    WorkerProfile::factory()->create([
-        'user_id'             => $worker->id,
-        'verification_status' => $verificationStatus,
-    ]);
-    return $worker;
-}
-
 it('client sees only their own bookings', function () {
     $client      = User::factory()->create(['role' => 'client']);
     $otherClient = User::factory()->create(['role' => 'client']);
-    $worker      = makeWorkerWithProfile();
+    $worker      = makeWorkerForListing();
 
     createBookingFor($client, $worker);
     createBookingFor($otherClient, $worker);
@@ -47,8 +36,8 @@ it('client sees only their own bookings', function () {
 });
 
 it('worker sees only their own bookings', function () {
-    $worker      = makeWorkerWithProfile();
-    $otherWorker = makeWorkerWithProfile();
+    $worker      = makeWorkerForListing();
+    $otherWorker = makeWorkerForListing();
     $client      = User::factory()->create(['role' => 'client']);
 
     createBookingFor($client, $worker);
@@ -63,7 +52,7 @@ it('worker sees only their own bookings', function () {
 it('admin sees all bookings', function () {
     $admin  = User::factory()->create(['role' => 'admin']);
     $client = User::factory()->create(['role' => 'client']);
-    $worker = makeWorkerWithProfile();
+    $worker = makeWorkerForListing();
 
     createBookingFor($client, $worker);
     createBookingFor($client, $worker);
@@ -76,7 +65,7 @@ it('admin sees all bookings', function () {
 
 it('filters bookings by status', function () {
     $client = User::factory()->create(['role' => 'client']);
-    $worker = makeWorkerWithProfile();
+    $worker = makeWorkerForListing();
 
     createBookingFor($client, $worker, 'pending');
     createBookingFor($client, $worker, 'accepted');
@@ -90,7 +79,7 @@ it('filters bookings by status', function () {
 
 it('returns pagination metadata', function () {
     $client = User::factory()->create(['role' => 'client']);
-    $worker = makeWorkerWithProfile();
+    $worker = makeWorkerForListing();
 
     createBookingFor($client, $worker);
 
@@ -108,7 +97,7 @@ it('returns 401 when unauthenticated on list', function () {
 
 it('returns a single booking for an authorized user', function () {
     $client  = User::factory()->create(['role' => 'client']);
-    $worker  = makeWorkerWithProfile();
+    $worker  = makeWorkerForListing();
     $booking = createBookingFor($client, $worker);
 
     $this->actingAs($client)
@@ -118,10 +107,10 @@ it('returns a single booking for an authorized user', function () {
 });
 
 it('returns 403 when a different user tries to view a booking', function () {
-    $client    = User::factory()->create(['role' => 'client']);
-    $worker    = makeWorkerWithProfile();
-    $booking   = createBookingFor($client, $worker);
-    $intruder  = User::factory()->create(['role' => 'client']);
+    $client   = User::factory()->create(['role' => 'client']);
+    $worker   = makeWorkerForListing();
+    $booking  = createBookingFor($client, $worker);
+    $intruder = User::factory()->create(['role' => 'client']);
 
     $this->actingAs($intruder)
         ->getJson("/api/bookings/{$booking->id}")
