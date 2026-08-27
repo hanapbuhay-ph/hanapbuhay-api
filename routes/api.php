@@ -4,6 +4,8 @@ use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Auth\EmailVerificationController;
 use App\Http\Controllers\Auth\GoogleAuthController;
 use App\Http\Controllers\Auth\RegisterController;
+use App\Http\Controllers\Worker\VerificationController;
+use App\Http\Controllers\Worker\WorkerProfileController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -31,4 +33,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('auth/logout',                       [AuthController::class, 'logout']);
     Route::post('auth/google/complete-profile',      [GoogleAuthController::class, 'completeProfile']);
     Route::get('user',                               [AuthController::class, 'me']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Worker Routes — auth:sanctum + worker role required
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth:sanctum', 'worker'])->prefix('worker')->group(function () {
+    Route::post('verification/submit', [VerificationController::class, 'submit']);
+    Route::get('verification/status',  [VerificationController::class, 'status']);
+    Route::post('profile',             [WorkerProfileController::class, 'update']);
 });
