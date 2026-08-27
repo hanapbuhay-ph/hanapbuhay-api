@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureClient;
 use App\Http\Middleware\EnsureWorker;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -21,6 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'worker' => EnsureWorker::class,
+            'client' => EnsureClient::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

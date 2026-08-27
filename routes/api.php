@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Booking\BookingController;
 use App\Http\Controllers\Auth\EmailVerificationController;
 use App\Http\Controllers\Auth\GoogleAuthController;
 use App\Http\Controllers\Auth\RegisterController;
@@ -38,6 +39,28 @@ Route::middleware('auth:sanctum')->group(function () {
     // Worker search — any authenticated user
     Route::get('workers',          [WorkerController::class, 'index']);
     Route::get('workers/{workerProfileId}', [WorkerController::class, 'show']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Booking Routes
+|--------------------------------------------------------------------------
+*/
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('bookings',                  [BookingController::class, 'index']);
+    Route::get('bookings/{id}',             [BookingController::class, 'show']);
+    Route::post('bookings/{id}/cancel',     [BookingController::class, 'cancel']);
+});
+
+Route::middleware(['auth:sanctum', 'client'])->group(function () {
+    Route::post('bookings', [BookingController::class, 'store']);
+});
+
+Route::middleware(['auth:sanctum', 'worker'])->group(function () {
+    Route::post('bookings/{id}/accept',   [BookingController::class, 'accept']);
+    Route::post('bookings/{id}/decline',  [BookingController::class, 'decline']);
+    Route::post('bookings/{id}/start',    [BookingController::class, 'start']);
+    Route::post('bookings/{id}/complete', [BookingController::class, 'complete']);
 });
 
 /*
