@@ -1,0 +1,34 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class RatingReview extends Model
+{
+    protected $table = 'ratings_reviews';
+
+    protected $fillable = [
+        'booking_id',
+        'rated_by',
+        'rated_user',
+        'score',
+        'comment',
+    ];
+
+    public function booking(): BelongsTo
+    {
+        return $this->belongsTo(Booking::class);
+    }
+
+    public function rater(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'rated_by');
+    }
+
+    public function ratee(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'rated_user');
+    }
+}

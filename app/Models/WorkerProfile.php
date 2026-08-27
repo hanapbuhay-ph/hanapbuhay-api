@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class WorkerProfile extends Model
 {
@@ -32,5 +34,20 @@ class WorkerProfile extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function verificationDocuments(): HasMany
+    {
+        return $this->hasMany(VerificationDocument::class);
+    }
+
+    public function serviceCategories(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            ServiceCategory::class,
+            'worker_service_categories',
+            'worker_profile_id',
+            'service_category_id'
+        );
     }
 }
