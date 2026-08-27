@@ -139,6 +139,44 @@ class AuthService
     }
 
     /**
+     * Initiates a password reset flow.
+     *
+     * Returns the generated OTP code and email when the user exists,
+     * or null for both when the email is not registered.
+     *
+     * @return array{otp: string|null, email: string|null}
+     */
+    public function forgotPassword(string $email): array
+    {
+        $user = User::where('email', $email)->first();
+
+        if ($user === null) {
+            return ['otp' => null, 'email' => null];
+        }
+
+        $otp = DB::transaction(function () use ($email): string {
+            OtpCode::where('email', $email)
+                ->where('type', 'password_reset')
+                ->whereNull('used_at')
+                ->update(['used_at' => Carbon::now()]);
+
+            $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+
+            OtpCode::create([
+                'email'      => $email,
+                'code'       => $code,
+                'type'       => 'password_reset',
+                'expires_at' => Carbon::now()->addMinutes(10),
+                'used_at'    => null,
+            ]);
+
+            return $code;
+        });
+
+        return ['otp' => $otp, 'email' => $email];
+    }
+
+    /**
      * Shape the user object returned in every auth response.
      * Single place to change the auth response user shape.
      */

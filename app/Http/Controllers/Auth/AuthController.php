@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Exceptions\Auth\EmailNotVerifiedException;
 use App\Exceptions\Auth\InvalidCredentialsException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Auth\ForgotPasswordRequest;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\ResendOtpRequest;
 use App\Mail\OtpMail;
@@ -18,6 +19,34 @@ class AuthController extends Controller
 {
     public function __construct(private readonly AuthService $authService)
     {
+    }
+
+    public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
+    {
+        $email = $request->validated('email');
+        $key   = 'forgot-password:' . $email;
+
+        if (RateLimiter::tooManyAttempts($key, 3)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Too many requests. Please wait before trying again.',
+            ], 429);
+        }
+
+        RateLimiter::hit($key, 600);
+
+        $result = $this->authService->forgotPassword($email);
+
+        if ($result['otp'] !== null) {
+            Mail::to($result['email'])->send(
+                new OtpMail($result['otp'], 'Your Password Reset Code')
+            );
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'If that email is registered, a password reset code has been sent.',
+        ]);
     }
 
     public function resendOtp(ResendOtpRequest $request): JsonResponse

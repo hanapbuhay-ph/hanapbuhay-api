@@ -16,7 +16,8 @@ Route::prefix('auth')->group(function () {
     Route::post('login',           [AuthController::class, 'login']);
     Route::post('google',          [GoogleAuthController::class, 'handleGoogleToken']);
     Route::post('email/verify',    [EmailVerificationController::class, 'verify']);
-    Route::post('email/resend-otp', [AuthController::class, 'resendOtp']);
+    Route::post('email/resend-otp',   [AuthController::class, 'resendOtp']);
+    Route::post('password/forgot',     [AuthController::class, 'forgotPassword']);
 });
 
 /*
