@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BookingTracking extends Model
 {
+    protected $table = 'booking_tracking';
+
     public $timestamps = false;
 
     protected $fillable = [

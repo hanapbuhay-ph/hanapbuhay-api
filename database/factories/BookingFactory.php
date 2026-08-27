@@ -10,7 +10,11 @@ class BookingFactory extends Factory
 {
     public function definition(): array
     {
+        static $sequence = 0;
+        $sequence++;
+
         return [
+            'booking_code'        => sprintf('HB-%d-%05d', now()->year, $sequence),
             'client_id'           => User::factory(),
             'worker_id'           => User::factory(),
             'service_category_id' => ServiceCategory::factory(),
