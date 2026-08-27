@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\ForgotPasswordRequest;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\ResendOtpRequest;
+use App\Http\Requests\Auth\ResetPasswordRequest;
 use App\Http\Requests\Auth\VerifyResetOtpRequest;
 use App\Mail\OtpMail;
 use App\Services\Auth\AuthService;
@@ -20,6 +21,27 @@ class AuthController extends Controller
 {
     public function __construct(private readonly AuthService $authService)
     {
+    }
+
+    public function resetPassword(ResetPasswordRequest $request): JsonResponse
+    {
+        $success = $this->authService->resetPassword(
+            $request->validated('email'),
+            $request->validated('reset_token'),
+            $request->validated('password')
+        );
+
+        if (! $success) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid or expired reset token.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Password reset successfully. Please log in.',
+        ]);
     }
 
     public function verifyResetOtp(VerifyResetOtpRequest $request): JsonResponse

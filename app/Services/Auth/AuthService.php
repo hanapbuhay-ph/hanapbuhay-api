@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Throwable;
 
 class AuthService
@@ -199,11 +200,47 @@ class AuthService
             return null;
         }
 
-        $resetToken = \Illuminate\Support\Str::random(64);
+        $resetToken = Str::random(64);
 
         $otp->update(['reset_token' => $resetToken]);
 
         return $resetToken;
+    }
+
+    /**
+     * Resets the user's password using a verified reset_token.
+     *
+     * Returns false if the email or OTP record is not found / invalid.
+     * On success: updates password, marks OTP used, revokes all tokens.
+     */
+    public function resetPassword(string $email, string $resetToken, string $newPassword): bool
+    {
+        $user = User::where('email', $email)->first();
+
+        if ($user === null) {
+            return false;
+        }
+
+        $otp = OtpCode::validFor($email, 'password_reset')
+            ->where('reset_token', $resetToken)
+            ->latest()
+            ->first();
+
+        if ($otp === null) {
+            return false;
+        }
+
+        DB::transaction(function () use ($user, $otp, $newPassword): void {
+            $user->password = Hash::make($newPassword);
+            $user->save();
+
+            $otp->used_at = Carbon::now();
+            $otp->save();
+        });
+
+        $user->tokens()->delete();
+
+        return true;
     }
 
     /**
