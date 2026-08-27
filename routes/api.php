@@ -5,6 +5,7 @@ use App\Http\Controllers\Auth\EmailVerificationController;
 use App\Http\Controllers\Auth\GoogleAuthController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Worker\VerificationController;
+use App\Http\Controllers\Worker\WorkerController;
 use App\Http\Controllers\Worker\WorkerProfileController;
 use Illuminate\Support\Facades\Route;
 
@@ -33,6 +34,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('auth/logout',                       [AuthController::class, 'logout']);
     Route::post('auth/google/complete-profile',      [GoogleAuthController::class, 'completeProfile']);
     Route::get('user',                               [AuthController::class, 'me']);
+
+    // Worker search — any authenticated user
+    Route::get('workers',          [WorkerController::class, 'index']);
+    Route::get('workers/{workerProfileId}', [WorkerController::class, 'show']);
 });
 
 /*

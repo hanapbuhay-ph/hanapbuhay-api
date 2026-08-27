@@ -52,4 +52,9 @@ class WorkerProfile extends Model
             'service_category_id'
         );
     }
+
+    public function ratings(): HasMany
+    {
+        return $this->hasMany(RatingReview::class, 'rated_user', 'user_id');
+    }
 }
