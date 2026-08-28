@@ -10,6 +10,7 @@ use App\Http\Controllers\Worker\WorkerController;
 use App\Http\Controllers\Worker\WorkerProfileController;
 use App\Http\Controllers\Report\ReportController;
 use App\Http\Controllers\Message\MessageController;
+use App\Http\Controllers\Notification\NotificationController;
 use App\Http\Controllers\Tracking\TrackingController;
 use Illuminate\Support\Facades\Route;
 
@@ -98,6 +99,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('bookings/{id}/tracking/update', [TrackingController::class, 'update']);
     Route::post('bookings/{id}/tracking/stop',   [TrackingController::class, 'stop']);
     Route::get('bookings/{id}/tracking',         [TrackingController::class, 'show']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Notification Routes
+|--------------------------------------------------------------------------
+*/
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('notifications/register-device', [NotificationController::class, 'registerDevice']);
 });
 
 /*

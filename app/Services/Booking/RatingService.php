@@ -5,10 +5,13 @@ namespace App\Services\Booking;
 use App\Models\Booking;
 use App\Models\RatingReview;
 use App\Models\User;
+use App\Services\Notification\NotificationService;
 use Illuminate\Support\Facades\DB;
 
 class RatingService
 {
+    public function __construct(private readonly NotificationService $notifications) {}
+
     public function rate(Booking $booking, User $rater, int $score, ?string $comment): RatingReview
     {
         $ratedUserId = $rater->id === $booking->client_id
@@ -35,6 +38,15 @@ class RatingService
                     'total_reviews'  => $stats->total,
                     'average_rating' => round($stats->average, 2),
                 ]);
+            }
+
+            if ($ratedUser) {
+                $this->notifications->sendPush(
+                    $ratedUser,
+                    'New Review',
+                    "You received a {$score}-star review.",
+                    ['booking_id' => (string) $booking->id, 'type' => 'new_review'],
+                );
             }
 
             return $rating;

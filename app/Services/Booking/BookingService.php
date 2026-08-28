@@ -4,11 +4,14 @@ namespace App\Services\Booking;
 
 use App\Models\Booking;
 use App\Models\User;
+use App\Services\Notification\NotificationService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\JsonResponse;
 
 class BookingService
 {
+    public function __construct(private readonly NotificationService $notifications) {}
+
     public function create(array $data, int $clientId): Booking
     {
         $booking = Booking::create([
@@ -53,7 +56,16 @@ class BookingService
 
         $booking->update(['status' => 'accepted']);
 
-        return $booking->fresh(['client.barangay', 'worker.barangay', 'serviceCategory']);
+        $fresh = $booking->fresh(['client.barangay', 'worker.barangay', 'serviceCategory']);
+
+        $this->notifications->sendPush(
+            $fresh->client,
+            'Booking Accepted',
+            "Your booking {$fresh->booking_code} has been accepted.",
+            ['booking_id' => (string) $fresh->id, 'type' => 'booking_accepted'],
+        );
+
+        return $fresh;
     }
 
     public function decline(Booking $booking): JsonResponse|Booking
@@ -64,7 +76,16 @@ class BookingService
 
         $booking->update(['status' => 'declined']);
 
-        return $booking->fresh(['client.barangay', 'worker.barangay', 'serviceCategory']);
+        $fresh = $booking->fresh(['client.barangay', 'worker.barangay', 'serviceCategory']);
+
+        $this->notifications->sendPush(
+            $fresh->client,
+            'Booking Declined',
+            "Your booking {$fresh->booking_code} has been declined.",
+            ['booking_id' => (string) $fresh->id, 'type' => 'booking_declined'],
+        );
+
+        return $fresh;
     }
 
     public function cancel(Booking $booking, User $user, ?string $reason): JsonResponse|Booking
@@ -106,6 +127,15 @@ class BookingService
             'is_worker_tracking' => false,
         ]);
 
-        return $booking->fresh(['client.barangay', 'worker.barangay', 'serviceCategory']);
+        $fresh = $booking->fresh(['client.barangay', 'worker.barangay', 'serviceCategory']);
+
+        $this->notifications->sendPush(
+            $fresh->client,
+            'Booking Completed',
+            "Your booking {$fresh->booking_code} has been completed.",
+            ['booking_id' => (string) $fresh->id, 'type' => 'booking_completed'],
+        );
+
+        return $fresh;
     }
 }
