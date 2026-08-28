@@ -1,5 +1,10 @@
 <?php
 
+use App\Http\Controllers\Admin\AdminBookingController;
+use App\Http\Controllers\Admin\AdminReportController;
+use App\Http\Controllers\Admin\AdminUserController;
+use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\VerificationController as AdminVerificationController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Booking\BookingController;
 use App\Http\Controllers\Auth\EmailVerificationController;
@@ -119,4 +124,32 @@ Route::middleware(['auth:sanctum', 'worker'])->prefix('worker')->group(function 
     Route::post('verification/submit', [VerificationController::class, 'submit']);
     Route::get('verification/status',  [VerificationController::class, 'status']);
     Route::post('profile',             [WorkerProfileController::class, 'update']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Admin Routes — auth:sanctum + admin role required
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function () {
+    // Verification management
+    Route::get('verifications',                               [AdminVerificationController::class, 'index']);
+    Route::post('verifications/{workerProfileId}/review',     [AdminVerificationController::class, 'review']);
+
+    // User management
+    Route::get('users',                  [AdminUserController::class, 'index']);
+    Route::get('users/{id}',             [AdminUserController::class, 'show']);
+    Route::patch('users/{id}/toggle-active', [AdminUserController::class, 'toggleActive']);
+
+    // Booking oversight
+    Route::get('bookings',       [AdminBookingController::class, 'index']);
+    Route::get('bookings/{id}',  [AdminBookingController::class, 'show']);
+
+    // Report management
+    Route::get('reports',                [AdminReportController::class, 'index']);
+    Route::get('reports/{id}',           [AdminReportController::class, 'show']);
+    Route::patch('reports/{id}/resolve', [AdminReportController::class, 'resolve']);
+
+    // Dashboard stats
+    Route::get('dashboard', [DashboardController::class, 'index']);
 });
