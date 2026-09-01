@@ -53,6 +53,11 @@ class WorkerProfile extends Model
         );
     }
 
+    public function jobPosts(): HasMany
+    {
+        return $this->hasMany(JobPost::class);
+    }
+
     public function ratings(): HasMany
     {
         return $this->hasMany(RatingReview::class, 'rated_user', 'user_id');

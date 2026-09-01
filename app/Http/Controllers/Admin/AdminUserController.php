@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Exceptions\BusinessRuleException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\ToggleUserStatusRequest;
 use App\Services\Admin\AdminService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,8 +23,9 @@ class AdminUserController extends Controller
     {
         $paginated = $this->adminService->listUsers(
             $request->query('role'),
-            $request->query('is_active'),
+            $request->query('is_active') ?? $request->query('status'), // support both param names
             $request->query('search'),
+            $request->filled('barangay') ? $request->integer('barangay') : null,
         );
 
         $users = collect($paginated->items())->map(function ($user): array {
@@ -92,7 +94,7 @@ class AdminUserController extends Controller
     }
 
     /**
-     * PATCH /api/admin/users/{id}/toggle-active
+     * PATCH /api/admin/users/{id}/toggle-active  (legacy)
      * Toggle a user's is_active flag. Admin cannot deactivate themselves.
      */
     public function toggleActive(Request $request, int $id): JsonResponse
@@ -116,5 +118,44 @@ class AdminUserController extends Controller
                 'is_active' => $user->is_active,
             ],
         ], 200);
+    }
+
+    /**
+     * POST /api/admin/users/{id}/toggle-status  (spec URL)
+     * Suspend or reactivate a user with an explicit action + optional reason.
+     * Logs the action in admin_audit_logs.
+     */
+    public function toggleStatus(ToggleUserStatusRequest $request, int $id): JsonResponse
+    {
+        $admin  = $request->user();
+        $action = $request->validated('action');
+        $reason = $request->validated('reason');
+
+        if ($id === $admin->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You cannot modify your own account status.',
+            ], 422);
+        }
+
+        $user = \App\Models\User::findOrFail($id);
+
+        $newActive = ($action === 'reactivate');
+        $user->update(['is_active' => $newActive]);
+
+        $this->adminService->audit($admin, "user_{$action}", 'User', $user->id, array_filter([
+            'reason' => $reason,
+        ]));
+
+        $message = $action === 'suspend' ? 'User account suspended.' : 'User account reactivated.';
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'data'    => [
+                'user_id'   => $user->id,
+                'is_active' => $user->is_active,
+            ],
+        ]);
     }
 }

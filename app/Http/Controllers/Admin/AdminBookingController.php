@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\ForceCancelBookingRequest;
 use App\Services\Admin\AdminService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -21,6 +22,10 @@ class AdminBookingController extends Controller
     {
         $paginated = $this->adminService->listBookings(
             $request->query('status'),
+            $request->filled('category_id') ? $request->integer('category_id') : null,
+            $request->query('date_from'),
+            $request->query('date_to'),
+            $request->query('search'),
         );
 
         $bookings = collect($paginated->items())->map(function ($booking): array {
@@ -95,5 +100,30 @@ class AdminBookingController extends Controller
                 ],
             ],
         ], 200);
+    }
+
+    /**
+     * POST /api/admin/bookings/{id}/cancel
+     * Force-cancel any non-terminal booking.
+     */
+    public function forceCancel(ForceCancelBookingRequest $request, int $id): JsonResponse
+    {
+        $booking = $this->adminService->forceCancelBooking(
+            $request->user(),
+            $id,
+            $request->validated('reason'),
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Booking force-cancelled.',
+            'data'    => [
+                'id'                  => $booking->id,
+                'booking_code'        => $booking->booking_code,
+                'status'              => $booking->status,
+                'cancellation_reason' => $booking->cancellation_reason,
+                'cancelled_by'        => $booking->cancelled_by,
+            ],
+        ]);
     }
 }

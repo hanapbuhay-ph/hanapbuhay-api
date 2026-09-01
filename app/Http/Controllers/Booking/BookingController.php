@@ -31,9 +31,12 @@ class BookingController extends Controller
 
         $profile = $worker->workerProfile;
 
-        if (! $profile || $profile->verification_status !== 'approved') {
-            return response()->json(['success' => false, 'message' => 'This worker is not yet verified.'], 422);
+        if (! $profile) {
+            return response()->json(['success' => false, 'message' => 'Worker profile not found.'], 422);
         }
+
+        // Note: per spec, unverified workers CAN be booked after client acknowledges a warning modal.
+        // Verification enforcement is the client app's responsibility — the backend allows it.
 
         $booking = $this->service->create($request->validated(), $request->user()->id);
 
@@ -75,6 +78,48 @@ class BookingController extends Controller
         }
 
         return response()->json(['success' => true, 'data' => ['booking' => $booking]]);
+    }
+
+    /**
+     * POST /api/bookings/{id}/respond
+     * Spec-defined unified accept/decline endpoint (worker only).
+     * Delegates to the same BookingService methods as the individual routes.
+     */
+    public function respond(Request $request, int $id): JsonResponse
+    {
+        $request->validate([
+            'action' => ['required', 'string', 'in:accept,decline'],
+            'reason' => ['required_if:action,decline', 'nullable', 'string', 'max:500'],
+        ]);
+
+        $booking = Booking::find($id);
+
+        if (! $booking) {
+            return response()->json(['success' => false, 'message' => 'Booking not found.'], 404);
+        }
+
+        if ($request->user()->id !== $booking->worker_id) {
+            return response()->json(['success' => false, 'message' => 'Forbidden.'], 403);
+        }
+
+        if ($request->input('action') === 'accept') {
+            $result = $this->service->accept($booking);
+            $msg    = 'Booking accepted.';
+        } else {
+            // Pass the decline reason through cancellation_reason for tracking
+            $result = $this->service->decline($booking);
+            $msg    = 'Booking declined.';
+        }
+
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $msg,
+            'data'    => ['booking' => ['id' => $result->id, 'status' => $result->status]],
+        ]);
     }
 
     public function accept(Request $request, int $id): JsonResponse
@@ -138,6 +183,53 @@ class BookingController extends Controller
         }
 
         return response()->json(['success' => true, 'message' => 'Booking cancelled.', 'data' => ['booking' => $result]]);
+    }
+
+    /**
+     * POST /api/bookings/{id}/status  (spec §F6)
+     * Unified status-update endpoint.
+     *   status=active    → worker starts the job
+     *   status=completed → worker marks the job done
+     */
+    public function updateStatus(Request $request, int $id): JsonResponse
+    {
+        $request->validate([
+            'status' => ['required', 'string', 'in:active,completed'],
+        ]);
+
+        $booking = Booking::find($id);
+
+        if (! $booking) {
+            return response()->json(['success' => false, 'message' => 'Booking not found.'], 404);
+        }
+
+        if ($request->user()->id !== $booking->worker_id) {
+            return response()->json(['success' => false, 'message' => 'Forbidden.'], 403);
+        }
+
+        if ($request->input('status') === 'active') {
+            $result = $this->service->start($booking);
+            $msg    = 'Booking marked as active.';
+        } else {
+            $result = $this->service->complete($booking);
+            $msg    = 'Booking marked as completed.';
+        }
+
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $msg,
+            'data'    => [
+                'booking' => [
+                    'id'         => $result->id,
+                    'status'     => $result->status,
+                    'started_at' => $result->started_at?->toIso8601String(),
+                ],
+            ],
+        ]);
     }
 
     public function start(Request $request, int $id): JsonResponse

@@ -113,6 +113,15 @@ class TrackingController extends Controller
         ]);
     }
 
+    /**
+     * POST /api/bookings/{bookingId}/tracking/location  (spec URL alias)
+     * REST fallback for location updates — delegates to update().
+     */
+    public function location(UpdateTrackingRequest $request, int $id): JsonResponse
+    {
+        return $this->update($request, $id);
+    }
+
     public function stop(StopTrackingRequest $request, int $id): JsonResponse
     {
         $booking = Booking::find($id);

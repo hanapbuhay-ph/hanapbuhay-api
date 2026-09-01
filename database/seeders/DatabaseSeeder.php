@@ -11,6 +11,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             BarangaySeeder::class,
             ServiceCategorySeeder::class,
+            AdminUserSeeder::class,
         ]);
     }
 }

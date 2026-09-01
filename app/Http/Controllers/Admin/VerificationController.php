@@ -59,6 +59,48 @@ class VerificationController extends Controller
     }
 
     /**
+     * GET /api/admin/verifications/pending  (spec §K2 alias)
+     * Shortcut that returns only pending verifications.
+     */
+    public function pending(Request $request): JsonResponse
+    {
+        $paginated = $this->adminService->listVerifications('pending');
+
+        $verifications = collect($paginated->items())->map(function ($profile): array {
+            return [
+                'id'                  => $profile->id,
+                'user'                => [
+                    'id'       => $profile->user->id,
+                    'name'     => $profile->user->name,
+                    'email'    => $profile->user->email,
+                    'barangay' => $profile->user->barangay?->name,
+                ],
+                'verification_status' => $profile->verification_status,
+                'documents'           => $profile->verificationDocuments->map(fn ($doc) => [
+                    'type'      => $doc->document_type,
+                    'status'    => $doc->status,
+                    'file_path' => $doc->file_path,
+                ])->values(),
+                'updated_at'          => $profile->updated_at?->toIso8601String(),
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Pending verifications retrieved.',
+            'data'    => [
+                'verifications' => $verifications,
+                'pagination'    => [
+                    'current_page' => $paginated->currentPage(),
+                    'per_page'     => $paginated->perPage(),
+                    'total'        => $paginated->total(),
+                    'last_page'    => $paginated->lastPage(),
+                ],
+            ],
+        ]);
+    }
+
+    /**
      * POST /api/admin/verifications/{workerProfileId}/review
      * Approve or reject a worker's verification.
      */

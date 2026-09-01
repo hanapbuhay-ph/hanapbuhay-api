@@ -16,6 +16,8 @@ class ResolveReportRequest extends FormRequest
         return [
             'status'      => ['required', 'string', 'in:resolved,dismissed'],
             'admin_notes' => ['nullable', 'string', 'max:2000'],
+            // Optional enforcement action applied to the reported user
+            'action'      => ['sometimes', 'nullable', 'string', 'in:suspend_user,revoke_trust_tier,warn_user'],
         ];
     }
 
@@ -24,6 +26,7 @@ class ResolveReportRequest extends FormRequest
         return [
             'status.required' => 'The status field is required.',
             'status.in'       => 'Status must be either resolved or dismissed.',
+            'action.in'       => 'Action must be suspend_user, revoke_trust_tier, or warn_user.',
         ];
     }
 }

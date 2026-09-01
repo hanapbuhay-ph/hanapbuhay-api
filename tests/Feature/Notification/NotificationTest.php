@@ -94,6 +94,7 @@ it('worker accepting a booking notifies the client', function () use ($makeBooki
     $worker  = makeApprovedBookingWorker();
     $booking = $makeBooking('pending', $client->id, $worker->id);
 
+    $notifications->shouldReceive('notify')->once();
     $notifications->shouldReceive('sendPush')
         ->once()
         ->withArgs(fn ($user, $title) => $user->id === $client->id && $title === 'Booking Accepted');
@@ -111,6 +112,7 @@ it('worker declining a booking notifies the client', function () use ($makeBooki
     $worker  = makeApprovedBookingWorker();
     $booking = $makeBooking('pending', $client->id, $worker->id);
 
+    $notifications->shouldReceive('notify')->once();
     $notifications->shouldReceive('sendPush')
         ->once()
         ->withArgs(fn ($user, $title) => $user->id === $client->id && $title === 'Booking Declined');
@@ -128,6 +130,7 @@ it('worker completing a booking notifies the client', function () use ($makeBook
     $worker  = makeApprovedBookingWorker();
     $booking = $makeBooking('active', $client->id, $worker->id);
 
+    $notifications->shouldReceive('notify')->once();
     $notifications->shouldReceive('sendPush')
         ->once()
         ->withArgs(fn ($user, $title) => $user->id === $client->id && $title === 'Booking Completed');
@@ -145,6 +148,7 @@ it('client rating a booking notifies the rated worker', function () use ($makeBo
     $worker  = makeApprovedBookingWorker();
     $booking = $makeBooking('completed', $client->id, $worker->id);
 
+    $notifications->shouldReceive('notify')->once();
     $notifications->shouldReceive('sendPush')
         ->once()
         ->withArgs(fn ($user, $title) => $user->id === $worker->id && $title === 'New Review');

@@ -17,6 +17,7 @@ class Booking extends Model
         'client_id',
         'worker_id',
         'service_category_id',
+        'job_post_id',
         'notes',
         'scheduled_at',
         'status',
@@ -72,6 +73,11 @@ class Booking extends Model
     public function serviceCategory(): BelongsTo
     {
         return $this->belongsTo(ServiceCategory::class);
+    }
+
+    public function jobPost(): BelongsTo
+    {
+        return $this->belongsTo(JobPost::class);
     }
 
     public function trackingPoints(): HasMany

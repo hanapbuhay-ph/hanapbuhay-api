@@ -244,6 +244,116 @@ class AuthService
     }
 
     /**
+     * Update the authenticated user's basic profile fields and optional photo.
+     */
+    public function updateProfile(User $user, \App\Http\Requests\Auth\UpdateProfileRequest $request): User
+    {
+        $photoPath = $user->profile_photo_path;
+
+        if ($request->hasFile('profile_photo')) {
+            try {
+                $ext       = $request->file('profile_photo')->getClientOriginalExtension();
+                $photoPath = "photos/{$user->id}.{$ext}";
+
+                Storage::disk('public')->putFileAs(
+                    'photos',
+                    $request->file('profile_photo'),
+                    "{$user->id}.{$ext}"
+                );
+            } catch (Throwable $e) {
+                Log::error('Profile photo upload failed during updateProfile', [
+                    'user_id' => $user->id,
+                    'error'   => $e->getMessage(),
+                ]);
+                $photoPath = $user->profile_photo_path;
+            }
+        }
+
+        $fields = array_filter([
+            'name'               => $request->input('name'),
+            'mobile_number'      => $request->input('mobile_number'),
+            'barangay_id'        => $request->input('barangay_id'),
+            'profile_photo_path' => $photoPath !== $user->profile_photo_path ? $photoPath : null,
+        ], fn ($v) => $v !== null);
+
+        // Re-include photo even when path is the same (upload replaced file)
+        if ($request->hasFile('profile_photo')) {
+            $fields['profile_photo_path'] = $photoPath;
+        }
+
+        if (! empty($fields)) {
+            $user->update($fields);
+        }
+
+        return $user->load('barangay');
+    }
+
+    /**
+     * Change the authenticated user's password.
+     *
+     * For Google-only accounts (password is null), `current_password` is not
+     * required — they are setting a password for the first time.
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function changePassword(User $user, ?string $currentPassword, string $newPassword): array
+    {
+        $isGoogleOnly = $user->is_google_account && $user->password === null;
+
+        if (! $isGoogleOnly) {
+            if ($currentPassword === null) {
+                return ['success' => false, 'message' => 'Current password is required.'];
+            }
+
+            if (! Hash::check($currentPassword, $user->password)) {
+                return ['success' => false, 'message' => 'Current password is incorrect.'];
+            }
+        }
+
+        $user->update(['password' => Hash::make($newPassword)]);
+
+        return ['success' => true, 'message' => 'Password changed successfully.'];
+    }
+
+    /**
+     * Return all active Sanctum tokens for the user, flagging the current one.
+     */
+    public function getSessions(User $user, ?int $currentTokenId): array
+    {
+        return $user->tokens()
+            ->orderByDesc('last_used_at')
+            ->get()
+            ->map(fn ($token) => [
+                'id'           => $token->id,
+                'device'       => $token->name,
+                'last_used_at' => $token->last_used_at?->toIso8601String(),
+                'is_current'   => $token->id === $currentTokenId,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Revoke a specific session token (cannot revoke current token — use logout).
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function revokeSession(User $user, int $tokenId, ?int $currentTokenId): array
+    {
+        if ($currentTokenId !== null && $tokenId === $currentTokenId) {
+            return ['success' => false, 'message' => 'Use the logout endpoint to end your current session.'];
+        }
+
+        $deleted = $user->tokens()->where('id', $tokenId)->delete();
+
+        if ($deleted === 0) {
+            return ['success' => false, 'message' => 'Session not found.'];
+        }
+
+        return ['success' => true, 'message' => 'Session revoked.'];
+    }
+
+    /**
      * Shape the user object returned in every auth response.
      * Single place to change the auth response user shape.
      */

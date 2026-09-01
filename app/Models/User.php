@@ -29,6 +29,7 @@ class User extends Authenticatable
         'google_id',
         'is_google_account',
         'is_active',
+        'deletion_requested_at',
         'email_verified_at',
     ];
 
@@ -40,10 +41,11 @@ class User extends Authenticatable
     protected function casts(): array
     {
         return [
-            'email_verified_at'  => 'datetime',
-            'password'           => 'hashed',
-            'is_active'          => 'boolean',
-            'is_google_account'  => 'boolean',
+            'email_verified_at'        => 'datetime',
+            'deletion_requested_at'    => 'datetime',
+            'password'                 => 'hashed',
+            'is_active'                => 'boolean',
+            'is_google_account'        => 'boolean',
         ];
     }
 

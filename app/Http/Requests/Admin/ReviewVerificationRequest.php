@@ -14,7 +14,7 @@ class ReviewVerificationRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'action'      => ['required', 'string', 'in:approve,reject'],
+            'action'      => ['required', 'string', 'in:approve,reject,request_resubmission'],
             'admin_notes' => ['nullable', 'string', 'max:1000'],
         ];
     }
@@ -23,7 +23,7 @@ class ReviewVerificationRequest extends FormRequest
     {
         return [
             'action.required' => 'The action field is required.',
-            'action.in'       => 'Action must be either approve or reject.',
+            'action.in'       => 'Action must be approve, reject, or request_resubmission.',
         ];
     }
 }

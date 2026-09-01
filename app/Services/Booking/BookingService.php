@@ -58,6 +58,14 @@ class BookingService
 
         $fresh = $booking->fresh(['client.barangay', 'worker.barangay', 'serviceCategory']);
 
+        $this->notifications->notify(
+            $fresh->client,
+            'Booking Accepted',
+            "Your booking {$fresh->booking_code} has been accepted.",
+            'booking_accepted',
+            ['booking_id' => $fresh->id],
+        );
+
         $this->notifications->sendPush(
             $fresh->client,
             'Booking Accepted',
@@ -77,6 +85,14 @@ class BookingService
         $booking->update(['status' => 'declined']);
 
         $fresh = $booking->fresh(['client.barangay', 'worker.barangay', 'serviceCategory']);
+
+        $this->notifications->notify(
+            $fresh->client,
+            'Booking Declined',
+            "Your booking {$fresh->booking_code} has been declined.",
+            'booking_declined',
+            ['booking_id' => $fresh->id],
+        );
 
         $this->notifications->sendPush(
             $fresh->client,
@@ -128,6 +144,14 @@ class BookingService
         ]);
 
         $fresh = $booking->fresh(['client.barangay', 'worker.barangay', 'serviceCategory']);
+
+        $this->notifications->notify(
+            $fresh->client,
+            'Booking Completed',
+            "Your booking {$fresh->booking_code} has been completed.",
+            'booking_completed',
+            ['booking_id' => $fresh->id],
+        );
 
         $this->notifications->sendPush(
             $fresh->client,

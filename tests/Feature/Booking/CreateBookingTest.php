@@ -54,7 +54,7 @@ it('returns 403 when a worker tries to create a booking', function () {
         ->assertStatus(403);
 });
 
-it('returns 422 when the worker is not verified', function () {
+it('allows booking an unverified worker (warning is client-side only per spec)', function () {
     $client   = makeBookingClient();
     $category = ServiceCategory::factory()->create();
     $worker   = User::factory()->create(['role' => 'worker']);
@@ -65,8 +65,8 @@ it('returns 422 when the worker is not verified', function () {
 
     $this->actingAs($client)
         ->postJson('/api/bookings', validPayload($worker->id, $category->id))
-        ->assertStatus(422)
-        ->assertJsonPath('message', 'This worker is not yet verified.');
+        ->assertStatus(201)
+        ->assertJsonPath('success', true);
 });
 
 it('returns 422 when scheduled_at is in the past', function () {

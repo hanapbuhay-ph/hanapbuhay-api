@@ -41,6 +41,14 @@ class RatingService
             }
 
             if ($ratedUser) {
+                $this->notifications->notify(
+                    $ratedUser,
+                    'New Review',
+                    "You received a {$score}-star review.",
+                    'new_rating',
+                    ['booking_id' => $booking->id],
+                );
+
                 $this->notifications->sendPush(
                     $ratedUser,
                     'New Review',

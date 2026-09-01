@@ -10,6 +10,62 @@ use Illuminate\Http\Request;
 
 class WorkerSearchService
 {
+    public function getWorkersByCategory(User $authUser, int $categoryId, Request $request): array
+    {
+        $category = \App\Models\ServiceCategory::find($categoryId);
+
+        if (! $category || ! $category->is_active) {
+            throw new BusinessRuleException('Category not found.', 404);
+        }
+
+        $query = WorkerProfile::query()
+            ->where('verification_status', 'approved')
+            ->where(function ($q) {
+                $q->whereNull('trust_tier')
+                  ->orWhereNotIn('trust_tier', ['flagged', 'revoked']);
+            })
+            ->with(['user.barangay', 'serviceCategories', 'jobPosts' => fn ($q) => $q->where('service_category_id', $categoryId)->where('is_active', true)])
+            ->whereHas('serviceCategories', fn ($q) => $q->where('service_categories.id', $categoryId));
+
+        if ($request->filled('barangay_id')) {
+            $query->whereHas('user', fn ($q) => $q->where('barangay_id', $request->integer('barangay_id')));
+        }
+
+        if ($request->boolean('verified_only')) {
+            $query->whereNotNull('trust_tier');
+        }
+
+        if ($request->boolean('available_only')) {
+            $query->where('availability_status', 'available');
+        }
+
+        $workers = $query->get();
+
+        $authBarangay = $authUser->relationLoaded('barangay')
+            ? $authUser->barangay
+            : $authUser->load('barangay')->barangay;
+
+        $formatted = $workers->map(function ($profile) use ($authBarangay, $categoryId) {
+            $summary  = $this->formatWorkerSummary($profile, $authBarangay);
+            $jobPost  = $profile->jobPosts->first();
+
+            $summary['job_post'] = $jobPost ? [
+                'id'           => $jobPost->id,
+                'rate_amount'  => (float) $jobPost->rate_amount,
+                'rate_type'    => $jobPost->rate_type,
+                'rate_display' => $jobPost->rate_display,
+            ] : null;
+
+            return $summary;
+        })->values()->all();
+
+        return [
+            'category' => ['id' => $category->id, 'name' => $category->name],
+            'workers'  => $formatted,
+            'total'    => count($formatted),
+        ];
+    }
+
     public function getWorkers(User $authUser, Request $request): array
     {
         $query = WorkerProfile::query()

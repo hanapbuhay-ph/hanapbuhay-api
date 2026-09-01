@@ -5,12 +5,15 @@ namespace App\Http\Controllers\Auth;
 use App\Exceptions\Auth\EmailNotVerifiedException;
 use App\Exceptions\Auth\InvalidCredentialsException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Auth\ChangePasswordRequest;
 use App\Http\Requests\Auth\ForgotPasswordRequest;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\ResendOtpRequest;
 use App\Http\Requests\Auth\ResetPasswordRequest;
+use App\Http\Requests\Auth\UpdateProfileRequest;
 use App\Http\Requests\Auth\VerifyResetOtpRequest;
 use App\Mail\OtpMail;
+use App\Services\Auth\AccountDeletionService;
 use App\Services\Auth\AuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,8 +22,10 @@ use Illuminate\Support\Facades\RateLimiter;
 
 class AuthController extends Controller
 {
-    public function __construct(private readonly AuthService $authService)
-    {
+    public function __construct(
+        private readonly AuthService $authService,
+        private readonly AccountDeletionService $deletionService,
+    ) {
     }
 
     public function resetPassword(ResetPasswordRequest $request): JsonResponse
@@ -181,6 +186,129 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'data'    => $this->authService->formatUser($user),
+        ]);
+    }
+
+    /**
+     * POST /api/user/profile
+     * Update name, mobile number, barangay and/or profile photo.
+     */
+    public function updateProfile(UpdateProfileRequest $request): JsonResponse
+    {
+        $user = $this->authService->updateProfile($request->user(), $request);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Profile updated successfully.',
+            'data'    => ['user' => $this->authService->formatUser($user)],
+        ]);
+    }
+
+    /**
+     * POST /api/user/password
+     * Change password. Google-only accounts may omit current_password.
+     */
+    public function changePassword(ChangePasswordRequest $request): JsonResponse
+    {
+        $result = $this->authService->changePassword(
+            $request->user(),
+            $request->input('current_password'),
+            $request->validated('password'),
+        );
+
+        if (! $result['success']) {
+            return response()->json([
+                'success' => false,
+                'message' => $result['message'],
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $result['message'],
+        ]);
+    }
+
+    /**
+     * GET /api/user/sessions
+     * List all active login sessions (Sanctum tokens).
+     */
+    public function sessions(Request $request): JsonResponse
+    {
+        $currentToken = $request->user()->currentAccessToken();
+        $currentId    = $currentToken?->id;
+
+        $sessions = $this->authService->getSessions(
+            $request->user(),
+            $currentId,
+        );
+
+        return response()->json([
+            'success' => true,
+            'data'    => $sessions,
+        ]);
+    }
+
+    /**
+     * DELETE /api/user/sessions/{tokenId}
+     * Revoke a specific session. Cannot revoke the currently active session.
+     */
+    public function revokeSession(Request $request, int $tokenId): JsonResponse
+    {
+        $currentToken = $request->user()->currentAccessToken();
+        $currentId    = $currentToken?->id;
+
+        $result = $this->authService->revokeSession(
+            $request->user(),
+            $tokenId,
+            $currentId,
+        );
+
+        if (! $result['success']) {
+            return response()->json([
+                'success' => false,
+                'message' => $result['message'],
+            ], $result['message'] === 'Session not found.' ? 404 : 403);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $result['message'],
+        ]);
+    }
+
+    /**
+     * POST /api/user/delete-account
+     * Submit an account deletion request. Idempotent.
+     */
+    public function requestDeletion(Request $request): JsonResponse
+    {
+        $this->deletionService->requestDeletion($request->user());
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Account deletion requested. An admin will process your request within 30 days.',
+        ]);
+    }
+
+    /**
+     * DELETE /api/user/delete-account
+     * Cancel a pending deletion request.
+     */
+    public function cancelDeletionRequest(Request $request): JsonResponse
+    {
+        if ($request->user()->deletion_requested_at === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No pending deletion request found.',
+            ], 422);
+        }
+
+        $this->deletionService->cancelDeletionRequest($request->user());
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Deletion request cancelled.',
         ]);
     }
 }

@@ -48,7 +48,7 @@ it('client retrieves messages for their booking → 200 with correct pagination 
         ->assertJsonCount(1, 'data.messages')
         ->assertJsonStructure([
             'data' => [
-                'messages' => [['id', 'sender' => ['id', 'name'], 'message', 'is_read', 'created_at']],
+                'messages'   => [['id', 'sender_id', 'sender_name', 'content', 'attachment_url', 'is_read', 'created_at']],
                 'pagination' => ['current_page', 'per_page', 'total', 'last_page'],
             ],
         ])
@@ -117,7 +117,7 @@ it('client sends a message on an active booking → 201, correct sender_id and i
     $worker  = makeApprovedBookingWorker();
     $booking = $makeBooking($client->id, $worker->id);
 
-    $response = $this->actingAs($client)
+    $this->actingAs($client)
         ->postJson("/api/bookings/{$booking->id}/messages", [
             'message' => 'Hello, I am on my way.',
         ])
@@ -125,17 +125,17 @@ it('client sends a message on an active booking → 201, correct sender_id and i
         ->assertJsonPath('success', true)
         ->assertJsonPath('message', 'Message sent.')
         ->assertJsonStructure([
-            'data' => ['message' => ['id', 'sender' => ['id', 'name'], 'message', 'is_read', 'created_at']],
+            'data' => ['message' => ['id', 'sender_id', 'sender_name', 'content', 'attachment_url', 'is_read', 'created_at']],
         ])
         ->assertJsonPath('data.message.is_read', false)
-        ->assertJsonPath('data.message.sender.id', $client->id);
+        ->assertJsonPath('data.message.sender_id', $client->id);
 
     $this->assertDatabaseHas('messages', [
-        'booking_id' => $booking->id,
-        'sender_id'  => $client->id,
+        'booking_id'  => $booking->id,
+        'sender_id'   => $client->id,
         'receiver_id' => $worker->id,
-        'content'    => 'Hello, I am on my way.',
-        'is_read'    => false,
+        'content'     => 'Hello, I am on my way.',
+        'is_read'     => false,
     ]);
 });
 
@@ -150,7 +150,7 @@ it('worker sends a message → 201', function () use ($makeBooking) {
         ])
         ->assertStatus(201)
         ->assertJsonPath('success', true)
-        ->assertJsonPath('data.message.sender.id', $worker->id);
+        ->assertJsonPath('data.message.sender_id', $worker->id);
 
     $this->assertDatabaseHas('messages', [
         'booking_id'  => $booking->id,

@@ -106,6 +106,7 @@ class AdminReportController extends Controller
             $id,
             $request->validated('status'),
             $request->validated('admin_notes'),
+            $request->validated('action'),
         );
 
         return response()->json([

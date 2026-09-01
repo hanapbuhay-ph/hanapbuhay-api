@@ -32,4 +32,18 @@ class WorkerController extends Controller
             'data'    => $data,
         ]);
     }
+
+    /**
+     * GET /api/categories/{categoryId}/workers
+     * Browse all workers offering a specific service category.
+     */
+    public function byCategory(Request $request, int $categoryId): JsonResponse
+    {
+        $data = $this->workerSearchService->getWorkersByCategory($request->user(), $categoryId, $request);
+
+        return response()->json([
+            'success' => true,
+            'data'    => $data,
+        ]);
+    }
 }
