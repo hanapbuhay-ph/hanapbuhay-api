@@ -78,10 +78,19 @@ class AdminService
         };
 
         DB::transaction(function () use ($workerProfile, $newStatus, $adminNotes): void {
-            $workerProfile->update([
+            $updateData = [
                 'verification_status'  => $newStatus,
                 'verification_remarks' => $adminNotes,
-            ]);
+            ];
+
+            // Spec: auto-set trust_tier = 'verified' when approved
+            if ($newStatus === 'approved') {
+                $updateData['trust_tier']  = 'verified';
+                $updateData['verified_by'] = null; // will be set after load
+                $updateData['verified_at'] = now();
+            }
+
+            $workerProfile->update($updateData);
 
             $workerProfile->verificationDocuments()->update(['status' => $newStatus]);
         });
@@ -245,9 +254,9 @@ class AdminService
     // ──────────────────────────────────────────────────────────────────────────
 
     /**
-     * List all reports, optionally filtered by status.
+     * List all reports, optionally filtered by status and reason.
      */
-    public function listReports(?string $status): LengthAwarePaginator
+    public function listReports(?string $status, ?string $reason = null): LengthAwarePaginator
     {
         $query = Report::query()
             ->with([
@@ -259,6 +268,10 @@ class AdminService
 
         if ($status !== null) {
             $query->where('status', $status);
+        }
+
+        if ($reason !== null) {
+            $query->where('reason', $reason);
         }
 
         return $query->paginate(15);
@@ -278,25 +291,38 @@ class AdminService
 
     /**
      * Resolve or dismiss a report, storing optional admin notes.
-     * Optionally applies an enforcement action to the reported user.
+     * Supports both spec field name (resolution_action) and legacy (action).
+     * Side-effects are enforced inside a transaction.
      */
-    public function resolveReport(int $id, string $status, ?string $adminNotes, ?string $action = null): Report
+    public function resolveReport(int $id, string $status, ?string $adminNotes, ?string $action = null, ?string $resolutionAction = null): Report
     {
         $report = Report::with(['reportedUser.workerProfile'])->findOrFail($id);
 
-        DB::transaction(function () use ($report, $status, $adminNotes, $action): void {
+        // Normalise: map spec resolution_action → internal action
+        $effectiveAction = $action;
+        if ($resolutionAction !== null && $effectiveAction === null) {
+            $effectiveAction = match ($resolutionAction) {
+                'account_suspended'    => 'suspend_user',
+                'verification_revoked' => 'revoke_trust_tier',
+                'warning_issued'       => 'warn_user',
+                'no_action'            => null,
+                default                => null,
+            };
+        }
+
+        DB::transaction(function () use ($report, $status, $adminNotes, $effectiveAction): void {
             $report->update([
                 'status'        => $status,
                 'admin_remarks' => $adminNotes,
             ]);
 
-            if ($status === 'resolved' && $action !== null) {
+            if ($status === 'resolved' && $effectiveAction !== null) {
                 $reportedUser = $report->reportedUser;
 
-                match ($action) {
+                match ($effectiveAction) {
                     'suspend_user'      => $reportedUser?->update(['is_active' => false]),
                     'revoke_trust_tier' => $reportedUser?->workerProfile?->update(['trust_tier' => 'revoked']),
-                    'warn_user'         => null, // notification only — no DB change needed
+                    'warn_user'         => null,
                     default             => null,
                 };
             }
@@ -314,16 +340,34 @@ class AdminService
      */
     public function dashboardStats(): array
     {
+        $today = now()->toDateString();
+
+        $recentActivity = AdminAuditLog::with('admin:id,name')
+            ->latest()
+            ->limit(10)
+            ->get()
+            ->map(fn ($log) => [
+                'type'        => $log->action,
+                'description' => ucfirst(str_replace('_', ' ', $log->action))
+                    . ' by ' . ($log->admin?->name ?? 'Admin'),
+                'created_at'  => $log->created_at?->toIso8601String(),
+            ])
+            ->all();
+
         return [
-            'total_users'              => User::count(),
-            'total_workers'            => User::where('role', 'worker')->count(),
-            'total_clients'            => User::where('role', 'client')->count(),
-            'pending_verifications'    => WorkerProfile::where('verification_status', 'pending')->count(),
-            'total_bookings'           => Booking::count(),
-            'active_bookings'          => Booking::where('status', 'active')->count(),
-            'completed_bookings'       => Booking::where('status', 'completed')->count(),
-            'total_reports'            => Report::count(),
-            'open_reports'             => Report::where('status', 'under_review')->count(),
+            'total_users'                  => User::count(),
+            'total_workers'                => User::where('role', 'worker')->count(),
+            'total_clients'                => User::where('role', 'client')->count(),
+            'pending_verifications'        => WorkerProfile::where('verification_status', 'pending')->count(),
+            'total_bookings'               => Booking::count(),
+            'active_bookings'              => Booking::where('status', 'active')->count(),
+            'completed_bookings'           => Booking::where('status', 'completed')->count(),
+            'completed_bookings_today'     => Booking::where('status', 'completed')->whereDate('updated_at', $today)->count(),
+            'total_reports'                => Report::count(),
+            'open_reports'                 => Report::where('status', 'under_review')->count(),
+            'open_disputes'                => Report::where('status', 'under_review')->count(),
+            'total_active_job_posts'       => JobPost::where('is_active', true)->whereNull('deleted_at')->count(),
+            'recent_activity'              => $recentActivity,
         ];
     }
 

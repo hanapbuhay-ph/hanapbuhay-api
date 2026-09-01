@@ -553,9 +553,16 @@ it('dashboard returns all stat keys with correct integer values', function () us
 
     $data = $response->json('data');
 
-    // All values must be integers (non-negative)
-    foreach ($data as $key => $value) {
-        expect($value)->toBeInt("Expected {$key} to be an integer");
+    // Integer fields must be non-negative integers
+    $integerFields = [
+        'total_users', 'total_workers', 'total_clients',
+        'pending_verifications', 'total_bookings',
+        'active_bookings', 'completed_bookings',
+        'total_reports', 'open_reports',
+    ];
+
+    foreach ($integerFields as $key) {
+        expect($data[$key])->toBeInt("Expected {$key} to be an integer");
     }
 
     // Spot-check specific counts against what we seeded

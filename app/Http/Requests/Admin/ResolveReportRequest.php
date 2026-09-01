@@ -14,10 +14,12 @@ class ResolveReportRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'status'      => ['required', 'string', 'in:resolved,dismissed'],
-            'admin_notes' => ['nullable', 'string', 'max:2000'],
-            // Optional enforcement action applied to the reported user
-            'action'      => ['sometimes', 'nullable', 'string', 'in:suspend_user,revoke_trust_tier,warn_user'],
+            'status'            => ['required', 'string', 'in:resolved,dismissed'],
+            'admin_notes'       => ['nullable', 'string', 'max:2000'],
+            // Spec §K13 field name
+            'resolution_action' => ['sometimes', 'nullable', 'string', 'in:warning_issued,account_suspended,verification_revoked,no_action'],
+            // Legacy field name (backwards compat)
+            'action'            => ['sometimes', 'nullable', 'string', 'in:suspend_user,revoke_trust_tier,warn_user'],
         ];
     }
 
@@ -26,7 +28,8 @@ class ResolveReportRequest extends FormRequest
         return [
             'status.required' => 'The status field is required.',
             'status.in'       => 'Status must be either resolved or dismissed.',
-            'action.in'       => 'Action must be suspend_user, revoke_trust_tier, or warn_user.',
+            'resolution_action.in' => 'resolution_action must be warning_issued, account_suspended, verification_revoked, or no_action.',
+            'action.in'       => 'action must be suspend_user, revoke_trust_tier, or warn_user.',
         ];
     }
 }

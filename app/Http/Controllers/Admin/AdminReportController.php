@@ -22,6 +22,7 @@ class AdminReportController extends Controller
     {
         $paginated = $this->adminService->listReports(
             $request->query('status'),
+            $request->query('reason'),
         );
 
         $reports = collect($paginated->items())->map(function ($report): array {
@@ -107,6 +108,7 @@ class AdminReportController extends Controller
             $request->validated('status'),
             $request->validated('admin_notes'),
             $request->validated('action'),
+            $request->validated('resolution_action'),
         );
 
         return response()->json([
