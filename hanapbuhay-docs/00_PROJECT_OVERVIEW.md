@@ -1,7 +1,7 @@
 # HanapBuhay — Project Overview
 
 **Document Type:** Master Project Reference
-**Last Updated:** August 2026
+**Last Updated:** September 2026
 **Status:** Active Development
 
 ---
@@ -134,10 +134,16 @@ Workers actively post job listings (one per service category) that appear in the
 ```
 Worker posts: "Aircon Cleaning — From ₱300/session"
 Client sees this in their feed
-Client taps → views worker profile
-Client taps "Book" on the job post
+Client taps the post → views the full post and its images
+Client taps the worker identity → views the worker profile
+Client taps "Book" on the full post
 Booking form opens pre-filled
 ```
+
+Each job post may include up to 10 ordered service images. The first image is
+used as the feed-card preview, while the full post displays all images in a
+vertically scrollable list. Post media belongs to the job post, not the
+worker profile.
 
 ### 2. Distance Computation
 

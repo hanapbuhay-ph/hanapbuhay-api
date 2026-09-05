@@ -15,11 +15,12 @@ class BookingService
     public function create(array $data, int $clientId): Booking
     {
         $booking = Booking::create([
-            'client_id'           => $clientId,
-            'worker_id'           => $data['worker_id'],
+            'client_id' => $clientId,
+            'worker_id' => $data['worker_id'],
             'service_category_id' => $data['service_category_id'],
-            'scheduled_at'        => $data['scheduled_at'],
-            'notes'               => $data['notes'] ?? null,
+            'job_post_id' => $data['job_post_id'] ?? null,
+            'scheduled_at' => $data['scheduled_at'],
+            'notes' => $data['notes'] ?? null,
         ]);
 
         return $booking->load(['worker.barangay', 'serviceCategory']);
@@ -111,8 +112,8 @@ class BookingService
         }
 
         $booking->update([
-            'status'              => 'cancelled',
-            'cancelled_by'        => $user->role,
+            'status' => 'cancelled',
+            'cancelled_by' => $user->role,
             'cancellation_reason' => $reason,
         ]);
 
@@ -137,8 +138,8 @@ class BookingService
         }
 
         $booking->update([
-            'status'             => 'completed',
-            'completed_at'       => now(),
+            'status' => 'completed',
+            'completed_at' => now(),
             'is_client_tracking' => false,
             'is_worker_tracking' => false,
         ]);

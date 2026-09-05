@@ -3,7 +3,7 @@
 **Base URL (local):** http://127.0.0.1:8000/api
 **Base URL (emulator):** http://10.0.2.2:8000/api
 **Framework:** Laravel 13 + Sanctum
-**Last Updated:** August 2026
+**Last Updated:** September 2026
 
 ---
 
@@ -799,6 +799,14 @@ Response 200:
                 "rate_type": "daily",
                 "rate_display": "₱300.00/day",
                 "is_available": true,
+                "images": [
+                    {
+                        "id": 21,
+                        "thumbnail_url": "...",
+                        "image_url": "...",
+                        "display_order": 0
+                    }
+                ],
                 "posted_at": "2026-08-20T..."
             }
         ],
@@ -1044,6 +1052,44 @@ Response 200:
 
 ---
 
+### E0. Get Job Post Detail
+```
+GET /api/posts/{postId}
+(Protected, Client only)
+
+Response 200:
+{
+    "success": true,
+    "data": {
+        "job_post": {
+            "id": 5,
+            "worker_profile_id": 3,
+            "service_category_id": 1,
+            "worker": { ... },
+            "category": { ... },
+            "title": "Expert Aircon Cleaning & Repair",
+            "description": "Complete service description...",
+            "rate_amount": 300.00,
+            "rate_type": "per_session",
+            "rate_display": "From ₱300.00/session",
+            "is_available": true,
+            "is_active": true,
+            "images": [
+                {
+                    "id": 21,
+                    "image_url": "...",
+                    "thumbnail_url": "...",
+                    "display_order": 0
+                }
+            ]
+        }
+    }
+}
+```
+
+Images are returned ordered by `display_order`. An inactive or deleted post
+returns 404 for the client detail endpoint.
+
 ### E1. Create Job Post
 ```
 POST /api/worker/posts
@@ -1101,6 +1147,63 @@ Response 201:
     }
 }
 ```
+
+---
+
+### E1A. Upload Post Images
+```
+POST /api/worker/posts/{postId}/images
+(Protected, Worker owner only)
+Content-Type: multipart/form-data
+
+Fields:
+  images[]: one or more JPEG, PNG, or WebP files
+
+Rules:
+  Maximum 10 total images per post
+  Maximum 10 MB per uploaded file before compression
+  Server generates optimized image and thumbnail files
+  New images are appended after existing images
+
+Response 201:
+{
+    "success": true,
+    "data": {
+        "images": [
+            {
+                "id": 21,
+                "image_url": "...",
+                "thumbnail_url": "...",
+                "display_order": 0
+            }
+        ]
+    }
+}
+```
+
+### E1B. Delete Post Image
+```
+DELETE /api/worker/posts/{postId}/images/{imageId}
+(Protected, Worker owner only)
+```
+
+Deletes the image and its stored files. The remaining images are renumbered
+from zero in their existing order.
+
+### E1C. Reorder Post Images
+```
+PUT /api/worker/posts/{postId}/images/order
+(Protected, Worker owner only)
+
+Request Body:
+{
+    "image_ids": [23, 21, 22]
+}
+```
+
+The request must include every image belonging to the post exactly once.
+The array position becomes `display_order`; the first image becomes the feed
+preview.
 
 ---
 

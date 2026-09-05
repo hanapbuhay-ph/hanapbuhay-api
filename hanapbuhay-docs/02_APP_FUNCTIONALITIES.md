@@ -1,4 +1,4 @@
-# HanapBuhay — App Functionalities **Document Type:** Mobile App Feature Reference **Platform:** Flutter (Android + iOS) **Audience:** App Developer, Project Manager, QA Tester **Last Updated:** August 2026
+# HanapBuhay — App Functionalities **Document Type:** Mobile App Feature Reference **Platform:** Flutter (Android + iOS) **Audience:** App Developer, Project Manager, QA Tester **Last Updated:** September 2026
 
 ---
 
@@ -281,9 +281,22 @@ Splash Screen (2 seconds)
 - Service category tag
 - Starting rate (e.g. "From ₱300/session")
 - Barangay + distance (e.g. "Poblacion · ~1.2 km")
+- First uploaded post image as a visual preview, when available
+- Image count indicator when the post has multiple images
 - Short description preview (2 lines max)
 - Availability indicator (Available Now / Busy)
-- Tapping the card → Worker Profile Screen
+- Tapping the post content → Full Job Post Detail Screen
+- Tapping the worker photo or name → Worker Profile Screen
+
+#### B1.3 Full Job Post Detail Screen
+- Opens from a client home feed card
+- Shows the worker header, profile photo, name, trust badge, barangay, and distance
+- Shows the complete post title, category, description, rate, and availability
+- Shows all uploaded post images in a vertically scrolling ListView
+- Images are displayed in their saved display order
+- Includes a Book button that opens the booking request form pre-filled with this post
+- Worker identity remains tappable and opens the Worker Profile Screen
+- Loading, empty-image, not-found, and error states are required
 
 ---
 

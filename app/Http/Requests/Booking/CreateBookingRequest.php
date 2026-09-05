@@ -14,23 +14,24 @@ class CreateBookingRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'worker_id'           => ['required', 'integer', 'exists:users,id', 'not_in:' . $this->user()->id],
+            'worker_id' => ['required', 'integer', 'exists:users,id', 'not_in:'.$this->user()->id],
             'service_category_id' => ['required', 'integer', 'exists:service_categories,id'],
-            'scheduled_at'        => ['required', 'date', 'after:now'],
-            'notes'               => ['nullable', 'string', 'max:1000'],
+            'job_post_id' => ['sometimes', 'nullable', 'integer', 'exists:job_posts,id'],
+            'scheduled_at' => ['required', 'date', 'after:now'],
+            'notes' => ['nullable', 'string', 'max:1000'],
         ];
     }
 
     public function messages(): array
     {
         return [
-            'worker_id.required'           => 'A worker must be selected.',
-            'worker_id.exists'             => 'The selected worker does not exist.',
-            'worker_id.not_in'          => 'You cannot book yourself.',
+            'worker_id.required' => 'A worker must be selected.',
+            'worker_id.exists' => 'The selected worker does not exist.',
+            'worker_id.not_in' => 'You cannot book yourself.',
             'service_category_id.required' => 'A service category must be selected.',
-            'service_category_id.exists'   => 'The selected service category does not exist.',
-            'scheduled_at.required'        => 'A scheduled date and time is required.',
-            'scheduled_at.after'           => 'The scheduled date must be in the future.',
+            'service_category_id.exists' => 'The selected service category does not exist.',
+            'scheduled_at.required' => 'A scheduled date and time is required.',
+            'scheduled_at.after' => 'The scheduled date must be in the future.',
         ];
     }
 }

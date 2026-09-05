@@ -1,4 +1,4 @@
-# HanapBuhay — App Worker Wireframe Specifications **Document Type:** Worker Mobile UI Specification **Platform:** Flutter (Android + iOS) **Audience:** App Developer, UI/UX Designer **Last Updated:** August 2026
+# HanapBuhay — App Worker Wireframe Specifications **Document Type:** Worker Mobile UI Specification **Platform:** Flutter (Android + iOS) **Audience:** App Developer, UI/UX Designer **Last Updated:** September 2026
 
 ---
 
@@ -269,6 +269,9 @@ No incoming requests:
 │ │ Description *                   │ │
 │ │ [Multi-line text area]          │ │
 │ │ Min 3 lines shown               │ │
+│ │ Service Photos (optional)       │ │
+│ │ [Add photo] [thumbnail] ...     │ │
+│ │ Up to 10 photos, reorder/remove │ │
 │ │                                 │ │
 │ │ Starting Rate *                 │ │
 │ │ [₱] [Number input]              │ │
@@ -315,6 +318,14 @@ Description textarea:
   Placeholder: "Describe your service,
   experience, and what's included..."
   Min height: 120px
+
+Service Photos:
+  Optional, maximum 10 images per post
+  JPEG, PNG, or WebP only
+  Each selected image is compressed before upload
+  Thumbnail strip supports remove and drag-to-reorder
+  First image is used as the client feed-card preview
+  Upload progress and per-image errors are shown
 
 Starting Rate:
   Philippine peso (₱) prefix
@@ -369,6 +380,9 @@ with these differences:
 
 AppBar title: "Edit Post"
 All fields pre-filled with existing data
+Existing post photos are shown in display order.
+Worker can add photos, remove photos, or reorder photos.
+Changes to photos are saved independently from text fields.
 Additional option at bottom (before Post button):
 
 ┌─── DANGER ZONE ──────────────────────┐

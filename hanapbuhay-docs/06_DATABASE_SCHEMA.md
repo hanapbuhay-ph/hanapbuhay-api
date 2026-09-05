@@ -1,4 +1,4 @@
-# HanapBuhay — Database Schema **Document Type:** Complete Database Reference **Database:** MySQL 8.x **Framework:** Laravel 13 (PHP 8.5) **Last Updated:** August 2026
+# HanapBuhay — Database Schema **Document Type:** Complete Database Reference **Database:** MySQL 8.x **Framework:** Laravel 13 (PHP 8.5) **Last Updated:** September 2026
 
 ---
 
@@ -544,6 +544,46 @@ public function bookings(): HasMany
 ```
 
 ---
+
+## TABLE 7A: job_post_images **Status: ⏳ Pending**
+
+```php
+Schema::create('job_post_images', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('job_post_id')
+          ->constrained('job_posts')
+          ->cascadeOnDelete();
+    $table->string('image_path');
+    $table->string('thumbnail_path')->nullable();
+    $table->unsignedTinyInteger('display_order')->default(0);
+    $table->timestamps();
+});
+```
+
+### Column Notes
+```
+image_path:       Original or optimized service image path
+thumbnail_path:   Smaller preview path for feed and low-bandwidth loading
+display_order:    Zero-based order selected by the worker
+```
+
+### Rules
+```
+Maximum 10 images per active post
+Accepted formats: JPEG, PNG, WebP
+Validate MIME type and decoded image content on the server
+Compress and generate a thumbnail during upload
+Delete stored files when the image record is deleted
+Images are returned ordered by display_order, then id
+```
+
+Add to the JobPost model:
+```php
+public function images(): HasMany
+{
+    return $this->hasMany(JobPostImage::class)->orderBy('display_order');
+}
+```
 
 ## TABLE 8: bookings **Status: ⏳ Pending**
 
