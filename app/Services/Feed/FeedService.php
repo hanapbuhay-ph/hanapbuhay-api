@@ -16,8 +16,8 @@ class FeedService
      * Trust tier sort weight — higher = shown first.
      */
     private const TIER_WEIGHT = [
-        'trusted'    => 3,
-        'verified'   => 2,
+        'trusted' => 3,
+        'verified' => 2,
         'unverified' => 1,  // null trust_tier falls here
     ];
 
@@ -40,14 +40,15 @@ class FeedService
             ->with([
                 'workerProfile.user.barangay',
                 'serviceCategory',
+                'images',
             ])
             // Only show posts whose worker is approved and not banned
             ->whereHas('workerProfile', function ($q) {
                 $q->where('verification_status', 'approved')
-                  ->where(function ($inner) {
-                      $inner->whereNull('trust_tier')
+                    ->where(function ($inner) {
+                        $inner->whereNull('trust_tier')
                             ->orWhereNotIn('trust_tier', ['flagged', 'revoked']);
-                  });
+                    });
             })
             // Also require worker account to be active
             ->whereHas('workerProfile.user', fn ($q) => $q->where('is_active', true));
@@ -100,24 +101,24 @@ class FeedService
             $tierWeight = self::TIER_WEIGHT[$post->workerProfile?->trust_tier ?? 'unverified'] ?? 1;
 
             return [
-                'post'         => $post,
-                'distance_km'  => $distanceKm === PHP_INT_MAX ? null : $distanceKm,
-                'tier_weight'  => $tierWeight,
-                'avg_rating'   => (float) ($post->workerProfile?->average_rating ?? 0),
+                'post' => $post,
+                'distance_km' => $distanceKm === PHP_INT_MAX ? null : $distanceKm,
+                'tier_weight' => $tierWeight,
+                'avg_rating' => (float) ($post->workerProfile?->average_rating ?? 0),
             ];
         })
-        ->sortBy([
-            ['distance_km', 'asc'],
-            ['tier_weight', 'desc'],
-            ['avg_rating',  'desc'],
-        ])
-        ->values();
+            ->sortBy([
+                ['distance_km', 'asc'],
+                ['tier_weight', 'desc'],
+                ['avg_rating',  'desc'],
+            ])
+            ->values();
 
         // ── Manual pagination ─────────────────────────────────────────────────
-        $page    = max(1, (int) $request->query('page', 1));
+        $page = max(1, (int) $request->query('page', 1));
         $perPage = self::PER_PAGE;
-        $total   = $sorted->count();
-        $slice   = $sorted->slice(($page - 1) * $perPage, $perPage)->values();
+        $total = $sorted->count();
+        $slice = $sorted->slice(($page - 1) * $perPage, $perPage)->values();
 
         // Format each item
         $items = $slice->map(fn ($item) => $this->formatPost($item['post'], $item['distance_km']));
@@ -135,42 +136,48 @@ class FeedService
 
     private function formatPost(JobPost $post, ?float $distanceKm): array
     {
-        $profile        = $post->workerProfile;
-        $worker         = $profile?->user;
+        $profile = $post->workerProfile;
+        $worker = $profile?->user;
         $workerBarangay = $worker?->barangay;
 
         $distanceLabel = $distanceKm !== null ? "~{$distanceKm} km" : 'Distance unavailable';
 
         return [
-            'job_post_id'       => $post->id,
+            'job_post_id' => $post->id,
             'worker_profile_id' => $profile?->id,
-            'worker'            => [
-                'user_id'             => $worker?->id,
-                'name'                => $worker?->name,
-                'profile_photo_url'   => $worker?->profile_photo_path
-                    ? asset('storage/' . $worker->profile_photo_path)
+            'worker' => [
+                'user_id' => $worker?->id,
+                'name' => $worker?->name,
+                'profile_photo_url' => $worker?->profile_photo_path
+                    ? asset('storage/'.$worker->profile_photo_path)
                     : null,
-                'barangay'            => $workerBarangay?->name,
-                'barangay_id'         => $worker?->barangay_id,
-                'distance_km'         => $distanceKm,
-                'distance_label'      => $distanceLabel,
-                'average_rating'      => (float) ($profile?->average_rating ?? 0),
-                'total_reviews'       => $profile?->total_reviews ?? 0,
-                'trust_tier'          => $profile?->trust_tier,
+                'barangay' => $workerBarangay?->name,
+                'barangay_id' => $worker?->barangay_id,
+                'distance_km' => $distanceKm,
+                'distance_label' => $distanceLabel,
+                'average_rating' => (float) ($profile?->average_rating ?? 0),
+                'total_reviews' => $profile?->total_reviews ?? 0,
+                'trust_tier' => $profile?->trust_tier,
                 'verification_status' => $profile?->verification_status,
             ],
-            'category'          => [
-                'id'   => $post->serviceCategory?->id,
+            'category' => [
+                'id' => $post->serviceCategory?->id,
                 'name' => $post->serviceCategory?->name,
                 'icon' => $post->serviceCategory?->icon,
             ],
-            'title'             => $post->title,
-            'description'       => $post->description,
-            'rate_amount'       => (float) $post->rate_amount,
-            'rate_type'         => $post->rate_type,
-            'rate_display'      => $post->rate_display,
-            'is_available'      => $post->is_available,
-            'posted_at'         => $post->created_at?->toIso8601String(),
+            'title' => $post->title,
+            'description' => $post->description,
+            'rate_amount' => (float) $post->rate_amount,
+            'rate_type' => $post->rate_type,
+            'rate_display' => $post->rate_display,
+            'is_available' => $post->is_available,
+            'images' => $post->images->map(fn ($img) => [
+                'id' => $img->id,
+                'thumbnail_url' => $img->thumbnail_path ? asset('storage/'.$img->thumbnail_path) : null,
+                'image_url' => asset('storage/'.$img->image_path),
+                'display_order' => $img->display_order,
+            ])->values()->all(),
+            'posted_at' => $post->created_at?->toIso8601String(),
         ];
     }
 }

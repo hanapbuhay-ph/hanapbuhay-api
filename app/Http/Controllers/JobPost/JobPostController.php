@@ -25,7 +25,7 @@ class JobPostController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Job post created.',
-            'data'    => ['job_post' => $this->service->format($post->load('serviceCategory'))],
+            'data' => ['job_post' => $this->service->format($post->load(['serviceCategory', 'images']))],
         ], 201);
     }
 
@@ -40,8 +40,8 @@ class JobPostController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => [
-                'posts' => $posts->map(fn (JobPost $p) => $this->service->format($p)),
+            'data' => [
+                'posts' => $posts->load('images')->map(fn (JobPost $p) => $this->service->format($p)),
             ],
         ]);
     }
@@ -68,7 +68,65 @@ class JobPostController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Job post updated.',
-            'data'    => ['job_post' => $this->service->format($updated)],
+            'data' => ['job_post' => $this->service->format($updated->load('images'))],
+        ]);
+    }
+
+    /**
+     * GET /api/posts/{postId}
+     * Public post detail — active posts only.
+     */
+    public function show(Request $request, int $postId): JsonResponse
+    {
+        $post = $this->service->findForClient($postId);
+
+        if (! $post) {
+            return response()->json(['success' => false, 'message' => 'Post not found.'], 404);
+        }
+
+        $profile = $post->workerProfile;
+        $worker = $profile?->user;
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'job_post' => [
+                    'id' => $post->id,
+                    'worker_profile_id' => $profile?->id,
+                    'service_category_id' => $post->service_category_id,
+                    'worker' => [
+                        'user_id' => $worker?->id,
+                        'name' => $worker?->name,
+                        'profile_photo_url' => $worker?->profile_photo_path
+                            ? asset('storage/'.$worker->profile_photo_path)
+                            : null,
+                        'barangay' => $worker?->barangay?->name,
+                        'average_rating' => (float) ($profile?->average_rating ?? 0),
+                        'total_reviews' => $profile?->total_reviews ?? 0,
+                        'trust_tier' => $profile?->trust_tier,
+                        'verification_status' => $profile?->verification_status,
+                    ],
+                    'category' => [
+                        'id' => $post->serviceCategory?->id,
+                        'name' => $post->serviceCategory?->name,
+                        'icon' => $post->serviceCategory?->icon,
+                    ],
+                    'title' => $post->title,
+                    'description' => $post->description,
+                    'rate_amount' => (float) $post->rate_amount,
+                    'rate_type' => $post->rate_type,
+                    'rate_display' => $post->rate_display,
+                    'is_available' => $post->is_available,
+                    'is_active' => $post->is_active,
+                    'images' => $post->images->map(fn ($img) => [
+                        'id' => $img->id,
+                        'image_url' => asset('storage/'.$img->image_path),
+                        'thumbnail_url' => $img->thumbnail_path ? asset('storage/'.$img->thumbnail_path) : null,
+                        'display_order' => $img->display_order,
+                    ])->values()->all(),
+                    'created_at' => $post->created_at?->toIso8601String(),
+                ],
+            ],
         ]);
     }
 

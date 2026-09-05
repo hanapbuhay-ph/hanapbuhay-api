@@ -1,4 +1,4 @@
-# HanapBuhay — App Client Wireframe Specifications **Document Type:** Client Mobile UI Specification **Platform:** Flutter (Android + iOS) **Audience:** App Developer, UI/UX Designer **Last Updated:** August 2026
+# HanapBuhay — App Client Wireframe Specifications **Document Type:** Client Mobile UI Specification **Platform:** Flutter (Android + iOS) **Audience:** App Developer, UI/UX Designer **Last Updated:** September 2026
 
 ---
 
@@ -1094,6 +1094,12 @@ DESCRIPTION PREVIEW:
   Inter Regular 13px #6B6B6B
   Max 2 lines
 
+POST MEDIA PREVIEW:
+  If images exist, show the first image below the header
+  Full card-width aspect ratio: 4:3
+  Cached image with placeholder and loading state
+  If more than one image exists, show a small image-count indicator
+
 SizedBox height: 10
 
 BOTTOM ROW:
@@ -1109,9 +1115,53 @@ BOTTOM ROW:
     Amber = By Schedule
     Gray = Offline
 
-Tap card: → Worker Profile Screen
-           passing worker_profile_id
-           and job_post_id
+Tap post content or media: → Full Job Post Detail Screen
+                           passing job_post_id
+Tap worker photo or name: → Worker Profile Screen
+                            passing worker_profile_id
+```
+
+## SCREEN C1.1: Full Job Post Detail Screen **Route:** /client/posts/{postId} **Accessed from:** Client Home Feed card
+
+### Purpose
+Shows one worker service post in full, including all post images and the booking action.
+
+### Layout (top to bottom)
+```
+┌─────────────────────────────────────┐
+│ ← [Back]                    [...]   │
+│                                     │
+│ WORKER HEADER                       │
+│ [avatar] Worker name [trust badge]  │
+│ Category · Barangay · ~X.X km       │
+│ Tap header → Worker Profile         │
+│                                     │
+│ POST CONTENT                        │
+│ Post title                          │
+│ Complete description                 │
+│ From ₱X/[period] · availability    │
+│                                     │
+│ POST IMAGES                         │
+│ ListView.builder                     │
+│ [full-width image 1]                │
+│ [full-width image 2]                │
+│ ...                                 │
+│                                     │
+│ [Book This Service]                 │
+│ Persistent bottom action            │
+└─────────────────────────────────────┘
+```
+
+### Behavior
+```
+Load: GET /api/posts/{postId}
+Images: render in display_order using cached network images
+No images: omit the media section without leaving a blank region
+Image tap: open the image in a full-screen viewer with vertical paging
+Book button: → Send Booking Request Screen
+  passes job_post_id, worker_profile_id, and service_category_id
+Inactive post: show "This post is no longer available" and disable booking
+Not found: show a message and return action to the previous screen
 ```
 
 ### Advanced Filters Bottom Sheet
