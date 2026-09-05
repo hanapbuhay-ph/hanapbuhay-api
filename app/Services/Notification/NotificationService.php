@@ -12,7 +12,7 @@ use Kreait\Firebase\Messaging\Notification;
 
 class NotificationService
 {
-    public function __construct(private readonly Messaging $messaging) {}
+    public function __construct() {}
 
     /**
      * Create an in-app notification record for the given user.
@@ -43,6 +43,12 @@ class NotificationService
 
         $notification = Notification::create($title, $body);
 
+        try {
+            $messaging = app(Messaging::class);
+        } catch (\Throwable) {
+            return;
+        }
+
         foreach ($tokens as $token) {
             try {
                 $message = CloudMessage::new()
@@ -50,7 +56,7 @@ class NotificationService
                     ->withNotification($notification)
                     ->withData($data);
 
-                $this->messaging->send($message);
+                $messaging->send($message);
             } catch (MessagingException) {
                 $token->delete();
             }
