@@ -2,6 +2,7 @@
 
 use App\Models\Barangay;
 use App\Models\Booking;
+use App\Models\JobPost;
 use App\Models\RatingReview;
 use App\Models\ServiceCategory;
 use App\Models\User;
@@ -62,6 +63,7 @@ it('returns 200 with correct shape for an approved worker', function () {
                 'trust_tier',
                 'verification_status',
                 'availability_status',
+                'job_posts',
                 'reviews',
             ],
         ]);
@@ -77,11 +79,22 @@ it('returns 404 for a non-existent worker_profile_id', function () {
         ->assertStatus(404);
 });
 
-it('returns 404 when a client views an unapproved worker', function () {
+it('returns 200 when a client views an unverified worker (spec: verification is client-side concern)', function () {
     $client   = makeAuthClient();
     $barangay = Barangay::factory()->create();
     $user     = User::factory()->create(['role' => 'worker', 'email_verified_at' => now(), 'barangay_id' => $barangay->id]);
     $profile  = WorkerProfile::factory()->create(['user_id' => $user->id, 'verification_status' => 'pending']);
+
+    $this->actingAs($client)->get("/api/workers/{$profile->id}")
+        ->assertStatus(200)
+        ->assertJson(['success' => true]);
+});
+
+it('returns 404 when a client views a flagged or revoked worker', function () {
+    $client   = makeAuthClient();
+    $barangay = Barangay::factory()->create();
+    $user     = User::factory()->create(['role' => 'worker', 'email_verified_at' => now(), 'barangay_id' => $barangay->id]);
+    $profile  = WorkerProfile::factory()->create(['user_id' => $user->id, 'verification_status' => 'approved', 'trust_tier' => 'flagged']);
 
     $this->actingAs($client)->get("/api/workers/{$profile->id}")
         ->assertStatus(404);
@@ -138,4 +151,36 @@ it('returns 401 for unauthenticated request', function () {
     $profile = makeApprovedWorkerProfile();
 
     $this->get("/api/workers/{$profile->id}")->assertStatus(401);
+});
+
+it('response includes job_posts with documented D3 shape', function () {
+    $client   = makeAuthClient();
+    $profile  = makeApprovedWorkerProfile();
+    $category = ServiceCategory::factory()->create(['name' => 'Electrical Works']);
+
+    $post = JobPost::factory()->create([
+        'worker_profile_id'   => $profile->id,
+        'service_category_id' => $category->id,
+        'title'               => 'Expert Electrical Installation & Repair',
+        'description'         => 'Licensed electrical work with 5 years experience.',
+        'rate_amount'         => 300.00,
+        'rate_type'           => 'daily',
+        'is_available'        => true,
+        'is_active'           => true,
+    ]);
+
+    $response = $this->actingAs($client)->get("/api/workers/{$profile->id}");
+
+    $response->assertStatus(200);
+    $posts = $response->json('data.job_posts');
+    expect($posts)->toHaveCount(1);
+    expect($posts[0]['id'])->toBe($post->id);
+    expect($posts[0]['category']['id'])->toBe($category->id);
+    expect($posts[0]['category']['name'])->toBe('Electrical Works');
+    expect($posts[0]['title'])->toBe('Expert Electrical Installation & Repair');
+    expect($posts[0]['description'])->toBe('Licensed electrical work with 5 years experience.');
+    expect((float) $posts[0]['rate_amount'])->toBe(300.00);
+    expect($posts[0]['rate_type'])->toBe('daily');
+    expect($posts[0]['rate_display'])->toBe('₱300.00/day');
+    expect($posts[0]['is_available'])->toBe(true);
 });

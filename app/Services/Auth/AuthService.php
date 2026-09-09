@@ -77,20 +77,35 @@ class AuthService
             }
         }
 
-        DB::transaction(function () use ($user, $request, $photoPath): void {
+        $validated = $request->validated();
+
+        Log::info('completeProfile validated payload', [
+            'user_id'     => $user->id,
+            'validated'   => $validated,
+            'raw_role'    => $request->input('role'),
+            'raw_barangay'=> $request->input('barangay_id'),
+        ]);
+
+        DB::transaction(function () use ($user, $validated, $photoPath): void {
             $user->update([
-                'name'               => $request->name,
-                'mobile_number'      => $request->mobile_number,
-                'role'               => $request->role,
-                'barangay_id'        => $request->barangay_id,
+                'name'               => $validated['name'],
+                'mobile_number'      => $validated['mobile_number'],
+                'role'               => $validated['role'],
+                'barangay_id'        => $validated['barangay_id'],
                 'profile_photo_path' => $photoPath,
             ]);
 
             // Create the worker profile row so verification documents
             // can be submitted immediately after profile completion.
-            if ($request->role === 'worker' && ! $user->workerProfile()->exists()) {
-                WorkerProfile::create(['user_id' => $user->id]);
+            // Default availability_status to 'available' so new workers appear
+            // in the client feed right away without needing to toggle it first.
+            if ($validated['role'] === 'worker' && ! $user->workerProfile()->exists()) {
+                WorkerProfile::create([
+                    'user_id'             => $user->id,
+                    'availability_status' => 'available',
+                ]);
             }
+            Log::info('completeProfile after update', ['user_id' => $user->id, 'role' => $user->fresh()->role]);
         });
 
         return $user->load('barangay');
@@ -366,7 +381,10 @@ class AuthService
             'mobile_number'     => $user->mobile_number,
             'role'              => $user->role,
             'profile_photo_url' => $user->profile_photo_path
-                ? asset('storage/' . $user->profile_photo_path)
+                ? (str_starts_with($user->profile_photo_path, 'http://')
+                    || str_starts_with($user->profile_photo_path, 'https://')
+                    ? $user->profile_photo_path       // already a full URL (e.g. Google) -- use as-is
+                    : asset('storage/' . $user->profile_photo_path))
                 : null,
             'barangay'          => $user->barangay?->only([
                 'id', 'name', 'latitude', 'longitude',

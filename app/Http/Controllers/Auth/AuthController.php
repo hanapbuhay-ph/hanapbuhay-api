@@ -87,7 +87,7 @@ class AuthController extends Controller
         $result = $this->authService->forgotPassword($email);
 
         if ($result['otp'] !== null) {
-            Mail::to($result['email'])->send(
+            Mail::to($result['email'])->queue(
                 new OtpMail($result['otp'], 'Your Password Reset Code')
             );
         }
@@ -128,7 +128,7 @@ class AuthController extends Controller
             ]);
         }
 
-        Mail::to($result['email'])->send(
+        Mail::to($result['email'])->queue(
             new OtpMail($result['otp'], 'Your Email Verification Code')
         );
 

@@ -105,12 +105,13 @@ class WorkerSearchService
         ];
     }
 
-    public function getWorker(User $authUser, int $workerProfileId): array
+    public function getWorker(User $authUser, int|string $workerProfileId): array
     {
         $profile = WorkerProfile::with([
             'user.barangay',
             'serviceCategories',
             'verificationDocuments',
+            'jobPosts.serviceCategory',
             'ratings' => fn ($q) => $q->with('ratedByUser')->latest()->limit(10),
         ])->find($workerProfileId);
 
@@ -118,7 +119,7 @@ class WorkerSearchService
             throw new BusinessRuleException('Worker not found.', 404);
         }
 
-        if ($authUser->role !== 'admin' && $profile->verification_status !== 'approved') {
+        if ($authUser->role !== 'admin' && in_array($profile->trust_tier, ['flagged', 'revoked'], true)) {
             throw new BusinessRuleException('Worker not found.', 404);
         }
 
@@ -199,6 +200,19 @@ class WorkerSearchService
             'trust_tier'          => $profile->trust_tier,
             'verification_status' => $profile->verification_status,
             'availability_status' => $profile->availability_status,
+            'job_posts'           => $profile->jobPosts->map(fn ($p) => [
+                'id'           => $p->id,
+                'category'     => [
+                    'id'   => $p->serviceCategory?->id,
+                    'name' => $p->serviceCategory?->name,
+                ],
+                'title'        => $p->title,
+                'description'  => $p->description,
+                'rate_amount'  => (float) $p->rate_amount,
+                'rate_type'    => $p->rate_type,
+                'rate_display' => $p->rate_display,
+                'is_available' => $p->is_available,
+            ])->values()->all(),
             'reviews'             => $profile->ratings->map(fn ($r) => [
                 'rated_by_name' => $r->ratedByUser?->name,
                 'score'         => $r->score,

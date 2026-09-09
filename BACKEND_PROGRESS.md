@@ -1,7 +1,7 @@
 # HanapBuhay Backend — Progress Checklist
 
 **Reference:** `hanapbuhay-docs/` (latest spec, supersedes `development-docs/`)
-**Last Updated:** August 31, 2026
+**Last Updated:** September 8, 2026
 **Backend:** Laravel 13 · PHP 8.5 · MySQL · Sanctum
 
 > **Legend:**
@@ -151,6 +151,8 @@
 | `POST /bookings/{id}/rate` | ✅ Done | Submits rating; recalculates worker average (legacy) |
 | `POST /api/ratings` | ✅ Done | Spec §H1 — booking_id in body; comment max:300 |
 | Booking respond endpoint (`/respond`) | ✅ Done | `POST /bookings/{id}/respond` with `action: accept/decline` added alongside existing separate routes |
+| **Flutter app (Section B3)** — client booking screens wired to the API | ✅ Done | Send Request, Booking History, Booking Detail, Live Tracking all use `ApiBookingRepository` (GET/POST bookings, tracking start/stop/status). B3.6 guard corrected: "Confirm Job Completed" shows only when `status == active` **AND** `started_at != null` — matching wireframe "Worker marks job started → button appears". See `live_tracking_screen.dart`, `booking_detail_screen.dart`. |
+| **Flutter app (Section B4)** — client Ratings & Reviews wired to the API | ✅ Done | Rate & Review Screen (`rate_review_screen.dart`) submits via `ApiBookingRepository.submitReview` → `POST /api/bookings/{id}/rate` with `{ score, comment }`; Booking Detail shows "Rate & Review" when `status == completed && !isRated`. **B4.2 blocked/mismatch:** no client-facing `GET /api/ratings` exists (the only `GET /api/ratings` is the admin ratings-oversight endpoint); no "View Own Submitted Reviews" screen; documented in `development-docs/HANDOFF.md`. No backend endpoint created (requires approval). |
 
 ---
 

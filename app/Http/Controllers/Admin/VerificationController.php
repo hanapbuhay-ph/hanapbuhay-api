@@ -28,10 +28,10 @@ class VerificationController extends Controller
             return [
                 'id'                  => $profile->id,
                 'user'                => [
-                    'id'       => $profile->user->id,
-                    'name'     => $profile->user->name,
-                    'email'    => $profile->user->email,
-                    'barangay' => $profile->user->barangay?->name,
+                    'id'       => $profile->user?->id,
+                    'name'     => $profile->user?->name,
+                    'email'    => $profile->user?->email,
+                    'barangay' => $profile->user?->barangay?->name,
                 ],
                 'verification_status' => $profile->verification_status,
                 'documents'           => $profile->verificationDocuments->map(fn ($doc) => [
@@ -70,10 +70,10 @@ class VerificationController extends Controller
             return [
                 'id'                  => $profile->id,
                 'user'                => [
-                    'id'       => $profile->user->id,
-                    'name'     => $profile->user->name,
-                    'email'    => $profile->user->email,
-                    'barangay' => $profile->user->barangay?->name,
+                    'id'       => $profile->user?->id,
+                    'name'     => $profile->user?->name,
+                    'email'    => $profile->user?->email,
+                    'barangay' => $profile->user?->barangay?->name,
                 ],
                 'verification_status' => $profile->verification_status,
                 'documents'           => $profile->verificationDocuments->map(fn ($doc) => [

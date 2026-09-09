@@ -32,8 +32,13 @@ class RegisterController extends Controller
 
                 // Workers get a profile row created immediately so verification
                 // documents can be submitted before the worker is approved.
+                // Default availability_status to 'available' so new workers appear
+                // in the client feed right away without needing to toggle it first.
                 if ($request->role === 'worker') {
-                    WorkerProfile::create(['user_id' => $user->id]);
+                    WorkerProfile::create([
+                        'user_id'             => $user->id,
+                        'availability_status' => 'available',
+                    ]);
                 }
 
                 $otp = OtpCode::create([
@@ -44,7 +49,8 @@ class RegisterController extends Controller
                 ]);
             });
 
-            Mail::to($user->email)->send(
+            // Queued: HTTP returns immediately (~100ms), SMTP runs in background worker.
+            Mail::to($user->email)->queue(
                 new OtpMail($otp->code, 'Verify your HanapBuhay account')
             );
 

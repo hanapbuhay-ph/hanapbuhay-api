@@ -23,7 +23,7 @@ class WorkerController extends Controller
         ]);
     }
 
-    public function show(Request $request, int $workerProfileId): JsonResponse
+    public function show(Request $request, string $workerProfileId): JsonResponse
     {
         $data = $this->workerSearchService->getWorker($request->user(), $workerProfileId);
 

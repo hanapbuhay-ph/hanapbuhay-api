@@ -24,7 +24,9 @@ function makeFeedClient(?int $barangayId = null): User
 }
 
 /**
- * Create an approved worker with a job post and return [$worker, $post].
+ * Create a worker with a job post and return [$worker, $profile, $post, $category].
+ * Workers default to unverified — matching real registration behaviour.
+ * Pass verification_status in $profileOverrides to override.
  */
 function makeWorkerWithPost(array $postOverrides = [], ?int $barangayId = null): array
 {
@@ -35,7 +37,7 @@ function makeWorkerWithPost(array $postOverrides = [], ?int $barangayId = null):
     $worker  = User::factory()->create(['role' => 'worker', 'barangay_id' => $barangay->id]);
     $profile = WorkerProfile::factory()->create([
         'user_id'             => $worker->id,
-        'verification_status' => 'approved',
+        'verification_status' => 'unverified',
         'trust_tier'          => null,
         'availability_status' => 'available',
     ]);
@@ -146,6 +148,19 @@ it('does not show unavailable job posts by default', function () {
     $response = $this->actingAs($client)->getJson('/api/feed')->assertStatus(200);
 
     expect($response->json('data.posts'))->toBeEmpty();
+});
+
+it('shows unverified workers in the default feed (spec: verification is client-side concern)', function () {
+    $client  = makeFeedClient();
+    [, $profile, $post] = makeWorkerWithPost();
+
+    // Worker is unverified — should still appear in the feed
+    expect($profile->verification_status)->toBe('unverified');
+
+    $response = $this->actingAs($client)->getJson('/api/feed')->assertStatus(200);
+
+    $postIds = collect($response->json('data.posts'))->pluck('job_post_id');
+    expect($postIds)->toContain($post->id);
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

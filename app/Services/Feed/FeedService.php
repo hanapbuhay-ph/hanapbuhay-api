@@ -42,13 +42,15 @@ class FeedService
                 'serviceCategory',
                 'images',
             ])
-            // Only show posts whose worker is approved and not banned
+            // Exclude posts from workers whose account has been flagged or revoked.
+            // Unverified workers ARE allowed in the feed — spec §D1 states verification
+            // is a client-side concern (the app shows a warning modal); the backend
+            // should not block unverified workers from the feed entirely.
             ->whereHas('workerProfile', function ($q) {
-                $q->where('verification_status', 'approved')
-                    ->where(function ($inner) {
-                        $inner->whereNull('trust_tier')
-                            ->orWhereNotIn('trust_tier', ['flagged', 'revoked']);
-                    });
+                $q->where(function ($inner) {
+                    $inner->whereNull('trust_tier')
+                        ->orWhereNotIn('trust_tier', ['flagged', 'revoked']);
+                });
             })
             // Also require worker account to be active
             ->whereHas('workerProfile.user', fn ($q) => $q->where('is_active', true));
