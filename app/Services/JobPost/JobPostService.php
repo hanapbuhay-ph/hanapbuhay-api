@@ -12,6 +12,8 @@ class JobPostService
      * Create a new job post for a worker.
      * Business rule: one post per category per worker — the previous post in
      * that category is soft-deleted before the new one is inserted.
+     * Also syncs the worker_service_categories pivot so the worker appears in
+     * category browse results (getWorkersByCategory queries the pivot).
      */
     public function create(User $worker, array $data): JobPost
     {
@@ -22,16 +24,22 @@ class JobPostService
             ->where('service_category_id', $data['service_category_id'])
             ->delete();
 
-        return JobPost::create([
-            'worker_profile_id' => $profile->id,
+        $post = JobPost::create([
+            'worker_profile_id'   => $profile->id,
             'service_category_id' => $data['service_category_id'],
-            'title' => $data['title'],
-            'description' => $data['description'],
-            'rate_amount' => $data['rate_amount'],
-            'rate_type' => $data['rate_type'],
-            'is_available' => $data['is_available'] ?? true,
-            'is_active' => true,
+            'title'               => $data['title'],
+            'description'         => $data['description'],
+            'rate_amount'         => $data['rate_amount'],
+            'rate_type'           => $data['rate_type'],
+            'is_available'        => $data['is_available'] ?? true,
+            'is_active'           => true,
         ]);
+
+        // Keep the pivot in sync: attach the category if not already linked.
+        // syncWithoutDetaching preserves other category rows on the worker.
+        $profile->serviceCategories()->syncWithoutDetaching([$data['service_category_id']]);
+
+        return $post;
     }
 
     /**

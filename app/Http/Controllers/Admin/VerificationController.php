@@ -27,6 +27,7 @@ class VerificationController extends Controller
         $verifications = collect($paginated->items())->map(function ($profile): array {
             return [
                 'id'                  => $profile->id,
+                'worker_profile_id'   => $profile->id,
                 'user'                => [
                     'id'       => $profile->user?->id,
                     'name'     => $profile->user?->name,
@@ -69,6 +70,7 @@ class VerificationController extends Controller
         $verifications = collect($paginated->items())->map(function ($profile): array {
             return [
                 'id'                  => $profile->id,
+                'worker_profile_id'   => $profile->id,
                 'user'                => [
                     'id'       => $profile->user?->id,
                     'name'     => $profile->user?->name,
@@ -104,7 +106,7 @@ class VerificationController extends Controller
      * POST /api/admin/verifications/{workerProfileId}/review
      * Approve or reject a worker's verification.
      */
-    public function review(ReviewVerificationRequest $request, int $workerProfileId): JsonResponse
+    public function review(ReviewVerificationRequest $request, string $workerProfileId): JsonResponse
     {
         $workerProfile = $this->adminService->reviewVerification(
             $workerProfileId,

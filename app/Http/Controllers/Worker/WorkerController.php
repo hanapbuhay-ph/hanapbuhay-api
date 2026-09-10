@@ -37,7 +37,7 @@ class WorkerController extends Controller
      * GET /api/categories/{categoryId}/workers
      * Browse all workers offering a specific service category.
      */
-    public function byCategory(Request $request, int $categoryId): JsonResponse
+    public function byCategory(Request $request, int|string $categoryId): JsonResponse
     {
         $data = $this->workerSearchService->getWorkersByCategory($request->user(), $categoryId, $request);
 

@@ -68,7 +68,7 @@ class AdminBookingController extends Controller
      * GET /api/admin/bookings/{id}
      * View a single booking's full detail.
      */
-    public function show(int $id): JsonResponse
+    public function show(int|string $id): JsonResponse
     {
         $booking = $this->adminService->getBooking($id);
 
@@ -106,7 +106,7 @@ class AdminBookingController extends Controller
      * POST /api/admin/bookings/{id}/cancel
      * Force-cancel any non-terminal booking.
      */
-    public function forceCancel(ForceCancelBookingRequest $request, int $id): JsonResponse
+    public function forceCancel(ForceCancelBookingRequest $request, int|string $id): JsonResponse
     {
         $booking = $this->adminService->forceCancelBooking(
             $request->user(),

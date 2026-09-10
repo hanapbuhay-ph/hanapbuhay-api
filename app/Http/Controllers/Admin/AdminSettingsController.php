@@ -118,7 +118,7 @@ class AdminSettingsController extends Controller
     /**
      * PATCH /api/admin/settings/categories/{categoryId}
      */
-    public function updateCategory(UpdateCategoryRequest $request, int $categoryId): JsonResponse
+    public function updateCategory(UpdateCategoryRequest $request, int|string $categoryId): JsonResponse
     {
         $category = $this->adminService->updateCategory($request->user(), $categoryId, $request->validated());
 

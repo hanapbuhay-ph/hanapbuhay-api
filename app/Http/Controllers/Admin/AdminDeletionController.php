@@ -53,7 +53,7 @@ class AdminDeletionController extends Controller
      * POST /api/admin/deletion-requests/{id}/process
      * Anonymise and soft-delete the user. Irreversible.
      */
-    public function process(Request $request, int $id): JsonResponse
+    public function process(Request $request, int|string $id): JsonResponse
     {
         $user = User::withTrashed()->find($id);
 

@@ -52,7 +52,7 @@ class AdminJobPostController extends Controller
      * DELETE /api/admin/posts/{id}
      * Hard-delete a job post (admin only).
      */
-    public function destroy(Request $request, int $id): JsonResponse
+    public function destroy(Request $request, int|string $id): JsonResponse
     {
         $this->adminService->forceDeleteJobPost($request->user(), $id);
 

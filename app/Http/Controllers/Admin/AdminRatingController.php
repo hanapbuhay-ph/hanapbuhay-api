@@ -52,7 +52,7 @@ class AdminRatingController extends Controller
     /**
      * DELETE /api/admin/ratings/{id}
      */
-    public function destroy(Request $request, int $id): JsonResponse
+    public function destroy(Request $request, int|string $id): JsonResponse
     {
         $this->adminService->deleteRating($request->user(), $id);
 

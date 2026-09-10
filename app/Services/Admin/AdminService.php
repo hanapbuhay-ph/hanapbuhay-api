@@ -66,7 +66,7 @@ class AdminService
      * Approve, reject, or request resubmission of a worker's verification.
      * Notifies the worker after commit.
      */
-    public function reviewVerification(int $workerProfileId, string $action, ?string $adminNotes): WorkerProfile
+    public function reviewVerification(int|string $workerProfileId, string $action, ?string $adminNotes): WorkerProfile
     {
         $workerProfile = WorkerProfile::findOrFail($workerProfileId);
 

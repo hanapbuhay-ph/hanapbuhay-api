@@ -59,7 +59,7 @@ class AdminUserController extends Controller
      * GET /api/admin/users/{id}
      * View a single user's full detail, including worker_profile if applicable.
      */
-    public function show(int $id): JsonResponse
+    public function show(int|string $id): JsonResponse
     {
         $user = $this->adminService->getUser($id);
 
@@ -97,7 +97,7 @@ class AdminUserController extends Controller
      * PATCH /api/admin/users/{id}/toggle-active  (legacy)
      * Toggle a user's is_active flag. Admin cannot deactivate themselves.
      */
-    public function toggleActive(Request $request, int $id): JsonResponse
+    public function toggleActive(Request $request, int|string $id): JsonResponse
     {
         try {
             $user = $this->adminService->toggleActive($id, $request->user()->id);
@@ -125,13 +125,13 @@ class AdminUserController extends Controller
      * Suspend or reactivate a user with an explicit action + optional reason.
      * Logs the action in admin_audit_logs.
      */
-    public function toggleStatus(ToggleUserStatusRequest $request, int $id): JsonResponse
+    public function toggleStatus(ToggleUserStatusRequest $request, int|string $id): JsonResponse
     {
         $admin  = $request->user();
         $action = $request->validated('action');
         $reason = $request->validated('reason');
 
-        if ($id === $admin->id) {
+        if ((int) $id === $admin->id) {
             return response()->json([
                 'success' => false,
                 'message' => 'You cannot modify your own account status.',

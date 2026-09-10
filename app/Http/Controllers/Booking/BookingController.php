@@ -65,7 +65,7 @@ class BookingController extends Controller
         ]);
     }
 
-    public function show(Request $request, int $id): JsonResponse
+    public function show(Request $request, int|string $id): JsonResponse
     {
         $booking = $this->service->find($id);
 
@@ -85,7 +85,7 @@ class BookingController extends Controller
      * Spec-defined unified accept/decline endpoint (worker only).
      * Delegates to the same BookingService methods as the individual routes.
      */
-    public function respond(Request $request, int $id): JsonResponse
+    public function respond(Request $request, int|string $id): JsonResponse
     {
         $request->validate([
             'action' => ['required', 'string', 'in:accept,decline'],
@@ -122,7 +122,7 @@ class BookingController extends Controller
         ]);
     }
 
-    public function accept(Request $request, int $id): JsonResponse
+    public function accept(Request $request, int|string $id): JsonResponse
     {
         $booking = Booking::find($id);
 
@@ -143,7 +143,7 @@ class BookingController extends Controller
         return response()->json(['success' => true, 'message' => 'Booking accepted.', 'data' => ['booking' => $result]]);
     }
 
-    public function decline(Request $request, int $id): JsonResponse
+    public function decline(Request $request, int|string $id): JsonResponse
     {
         $booking = Booking::find($id);
 
@@ -164,7 +164,7 @@ class BookingController extends Controller
         return response()->json(['success' => true, 'message' => 'Booking declined.', 'data' => ['booking' => $result]]);
     }
 
-    public function cancel(CancelBookingRequest $request, int $id): JsonResponse
+    public function cancel(CancelBookingRequest $request, int|string $id): JsonResponse
     {
         $booking = Booking::find($id);
 
@@ -191,7 +191,7 @@ class BookingController extends Controller
      *   status=active    → worker starts the job
      *   status=completed → worker marks the job done
      */
-    public function updateStatus(Request $request, int $id): JsonResponse
+    public function updateStatus(Request $request, int|string $id): JsonResponse
     {
         $request->validate([
             'status' => ['required', 'string', 'in:active,completed'],
@@ -232,7 +232,7 @@ class BookingController extends Controller
         ]);
     }
 
-    public function start(Request $request, int $id): JsonResponse
+    public function start(Request $request, int|string $id): JsonResponse
     {
         $booking = Booking::find($id);
 
@@ -253,7 +253,7 @@ class BookingController extends Controller
         return response()->json(['success' => true, 'message' => 'Booking started.', 'data' => ['booking' => $result]]);
     }
 
-    public function complete(Request $request, int $id): JsonResponse
+    public function complete(Request $request, int|string $id): JsonResponse
     {
         $booking = Booking::find($id);
 
@@ -274,7 +274,7 @@ class BookingController extends Controller
         return response()->json(['success' => true, 'message' => 'Booking completed.', 'data' => ['booking' => $result]]);
     }
 
-    public function rate(RateBookingRequest $request, int $id): JsonResponse
+    public function rate(RateBookingRequest $request, int|string $id): JsonResponse
     {
         $booking = Booking::with('worker.workerProfile')->find($id);
 

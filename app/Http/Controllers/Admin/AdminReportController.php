@@ -65,7 +65,7 @@ class AdminReportController extends Controller
      * GET /api/admin/reports/{id}
      * View a single report's full detail, including evidence_paths and admin_notes.
      */
-    public function show(int $id): JsonResponse
+    public function show(int|string $id): JsonResponse
     {
         $report = $this->adminService->getReport($id);
 
@@ -101,7 +101,7 @@ class AdminReportController extends Controller
      * PATCH /api/admin/reports/{id}/resolve
      * Update report status to resolved or dismissed.
      */
-    public function resolve(ResolveReportRequest $request, int $id): JsonResponse
+    public function resolve(ResolveReportRequest $request, int|string $id): JsonResponse
     {
         $report = $this->adminService->resolveReport(
             $id,

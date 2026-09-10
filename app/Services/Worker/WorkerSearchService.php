@@ -24,7 +24,13 @@ class WorkerSearchService
                 $q->whereNull('trust_tier')
                   ->orWhereNotIn('trust_tier', ['flagged', 'revoked']);
             })
-            ->with(['user.barangay', 'serviceCategories', 'jobPosts' => fn ($q) => $q->where('service_category_id', $categoryId)->where('is_active', true)])
+            ->with([
+                'user.barangay',
+                'serviceCategories',
+                'jobPosts' => fn ($q) => $q->where('service_category_id', $categoryId)->where('is_active', true),
+                'jobPosts.images',
+                'jobPosts.serviceCategory',
+            ])
             ->whereHas('serviceCategories', fn ($q) => $q->where('service_categories.id', $categoryId));
 
         if ($request->filled('barangay_id')) {
@@ -51,9 +57,24 @@ class WorkerSearchService
 
             $summary['job_post'] = $jobPost ? [
                 'id'           => $jobPost->id,
+                'category'     => [
+                    'id'   => $jobPost->serviceCategory?->id,
+                    'name' => $jobPost->serviceCategory?->name,
+                ],
+                'title'        => $jobPost->title,
+                'description'  => $jobPost->description,
                 'rate_amount'  => (float) $jobPost->rate_amount,
                 'rate_type'    => $jobPost->rate_type,
                 'rate_display' => $jobPost->rate_display,
+                'is_available' => $jobPost->is_available,
+                'images'       => $jobPost->images->map(fn ($img) => [
+                    'id'            => $img->id,
+                    'image_url'     => asset('storage/' . $img->image_path),
+                    'thumbnail_url' => $img->thumbnail_path
+                        ? asset('storage/' . $img->thumbnail_path)
+                        : null,
+                    'display_order' => $img->display_order,
+                ])->values()->all(),
             ] : null;
 
             return $summary;
