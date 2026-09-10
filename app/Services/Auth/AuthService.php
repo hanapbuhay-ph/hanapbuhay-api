@@ -391,6 +391,43 @@ class AuthService
             ]),
             'email_verified_at' => $user->email_verified_at,
             'is_google_account' => $user->is_google_account,
+            'notification_preferences' => [
+                'booking_updates' => (bool) $user->notify_booking_updates,
+                'messages'        => (bool) $user->notify_messages,
+                'promotions'      => (bool) $user->notify_promotions,
+                'push'            => (bool) $user->notify_push,
+                'email'           => (bool) $user->notify_email,
+            ],
         ];
+    }
+
+    /**
+     * @return array{booking_updates: bool, messages: bool, promotions: bool, push: bool, email: bool}
+     */
+    public function getNotificationPreferences(User $user): array
+    {
+        return [
+            'booking_updates' => (bool) $user->notify_booking_updates,
+            'messages'        => (bool) $user->notify_messages,
+            'promotions'      => (bool) $user->notify_promotions,
+            'push'            => (bool) $user->notify_push,
+            'email'           => (bool) $user->notify_email,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $preferences
+     */
+    public function updateNotificationPreferences(User $user, array $preferences): User
+    {
+        $user->update([
+            'notify_booking_updates' => (bool) ($preferences['booking_updates'] ?? $user->notify_booking_updates),
+            'notify_messages'        => (bool) ($preferences['messages'] ?? $user->notify_messages),
+            'notify_promotions'      => (bool) ($preferences['promotions'] ?? $user->notify_promotions),
+            'notify_push'            => (bool) ($preferences['push'] ?? $user->notify_push),
+            'notify_email'           => (bool) ($preferences['email'] ?? $user->notify_email),
+        ]);
+
+        return $user->fresh();
     }
 }

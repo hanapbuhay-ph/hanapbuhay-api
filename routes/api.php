@@ -65,6 +65,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('user/sessions/{tokenId}', [AuthController::class, 'revokeSession']);
     // Spec alias — FCM token update
     Route::post('user/fcm-token', [NotificationController::class, 'registerDevice']);
+    Route::get('user/notification-preferences', [AuthController::class, 'notificationPreferences']);
+    Route::post('user/notification-preferences', [AuthController::class, 'updateNotificationPreferences']);
     // Account deletion (user side)
     Route::post('user/delete-account', [AuthController::class, 'requestDeletion']);
     Route::delete('user/delete-account', [AuthController::class, 'cancelDeletionRequest']);
@@ -97,6 +99,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
 Route::middleware(['auth:sanctum', 'client'])->group(function () {
     Route::post('bookings', [BookingController::class, 'store']);
+    Route::post('bookings/{id}/reschedule', [BookingController::class, 'reschedule']);
 });
 
 Route::middleware(['auth:sanctum', 'worker'])->group(function () {

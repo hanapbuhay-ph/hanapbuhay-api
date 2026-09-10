@@ -311,4 +311,33 @@ class AuthController extends Controller
             'message' => 'Deletion request cancelled.',
         ]);
     }
+
+    public function notificationPreferences(Request $request): JsonResponse
+    {
+        $preferences = $this->authService->getNotificationPreferences($request->user());
+
+        return response()->json([
+            'success' => true,
+            'data'    => $preferences,
+        ]);
+    }
+
+    public function updateNotificationPreferences(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'booking_updates' => 'sometimes|boolean',
+            'messages'        => 'sometimes|boolean',
+            'promotions'      => 'sometimes|boolean',
+            'push'            => 'sometimes|boolean',
+            'email'           => 'sometimes|boolean',
+        ]);
+
+        $user = $this->authService->updateNotificationPreferences($request->user(), $validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Notification preferences updated.',
+            'data'    => $this->authService->getNotificationPreferences($user),
+        ]);
+    }
 }

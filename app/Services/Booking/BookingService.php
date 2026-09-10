@@ -117,7 +117,24 @@ class BookingService
             'cancellation_reason' => $reason,
         ]);
 
-        return $booking->fresh(['client.barangay', 'worker.barangay', 'serviceCategory']);
+        $fresh = $booking->fresh(['client.barangay', 'worker.barangay', 'serviceCategory']);
+
+        $this->notifications->notify(
+            $fresh->worker,
+            'Booking Cancelled',
+            "Booking {$fresh->booking_code} has been cancelled by the client.",
+            'booking_cancelled',
+            ['booking_id' => $fresh->id],
+        );
+
+        $this->notifications->sendPush(
+            $fresh->worker,
+            'Booking Cancelled',
+            "Booking {$fresh->booking_code} has been cancelled by the client.",
+            ['booking_id' => (string) $fresh->id, 'type' => 'booking_cancelled'],
+        );
+
+        return $fresh;
     }
 
     public function start(Booking $booking): JsonResponse|Booking
@@ -159,6 +176,34 @@ class BookingService
             'Booking Completed',
             "Your booking {$fresh->booking_code} has been completed.",
             ['booking_id' => (string) $fresh->id, 'type' => 'booking_completed'],
+        );
+
+        return $fresh;
+    }
+
+    public function reschedule(Booking $booking, \DateTimeInterface $scheduledAt): JsonResponse|Booking
+    {
+        if (! in_array($booking->status, ['pending', 'accepted'])) {
+            return response()->json(['success' => false, 'message' => 'Booking cannot be rescheduled.'], 422);
+        }
+
+        $booking->update(['scheduled_at' => $scheduledAt]);
+
+        $fresh = $booking->fresh(['client.barangay', 'worker.barangay', 'serviceCategory']);
+
+        $this->notifications->notify(
+            $fresh->worker,
+            'Booking Rescheduled',
+            "Booking {$fresh->booking_code} has been rescheduled.",
+            'booking_rescheduled',
+            ['booking_id' => $fresh->id],
+        );
+
+        $this->notifications->sendPush(
+            $fresh->worker,
+            'Booking Rescheduled',
+            "Booking {$fresh->booking_code} has been rescheduled.",
+            ['booking_id' => (string) $fresh->id, 'type' => 'booking_rescheduled'],
         );
 
         return $fresh;

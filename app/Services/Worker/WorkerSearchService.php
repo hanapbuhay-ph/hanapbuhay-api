@@ -134,7 +134,10 @@ class WorkerSearchService
             'verificationDocuments',
             'jobPosts.serviceCategory',
             'ratings' => fn ($q) => $q->with('ratedByUser')->latest()->limit(10),
-        ])->find($workerProfileId);
+        ])
+            ->where('id', $workerProfileId)
+            ->orWhere('user_id', $workerProfileId)
+            ->first();
 
         if ($profile === null) {
             throw new BusinessRuleException('Worker not found.', 404);

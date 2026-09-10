@@ -31,6 +31,11 @@ class User extends Authenticatable
         'is_active',
         'deletion_requested_at',
         'email_verified_at',
+        'notify_booking_updates',
+        'notify_messages',
+        'notify_promotions',
+        'notify_push',
+        'notify_email',
     ];
 
     protected $hidden = [
