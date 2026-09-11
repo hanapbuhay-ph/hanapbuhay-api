@@ -145,7 +145,22 @@ class BookingService
 
         $booking->update(['status' => 'active', 'started_at' => now()]);
 
-        return $booking->fresh(['client.barangay', 'worker.barangay', 'serviceCategory']);
+        $fresh = $booking->fresh(['client.barangay', 'worker.barangay', 'serviceCategory']);
+        $this->notifications->notify(
+            $fresh->client,
+            'Job Started',
+            "The worker has started booking {$fresh->booking_code}.",
+            'booking_started',
+            ['booking_id' => $fresh->id],
+        );
+        $this->notifications->sendPush(
+            $fresh->client,
+            'Job Started',
+            "The worker has started booking {$fresh->booking_code}.",
+            ['booking_id' => (string) $fresh->id, 'type' => 'booking_started'],
+        );
+
+        return $fresh;
     }
 
     public function complete(Booking $booking): JsonResponse|Booking

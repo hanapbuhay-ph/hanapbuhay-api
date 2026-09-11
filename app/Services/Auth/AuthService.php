@@ -11,6 +11,7 @@ use App\Models\WorkerProfile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -23,7 +24,7 @@ class AuthService
      * @throws InvalidCredentialsException
      * @throws EmailNotVerifiedException
      */
-    public function login(string $email, string $password): array
+    public function login(string $email, string $password, ?string $deviceName = null, ?string $ipAddress = null): array
     {
         $user = User::with('barangay')->where('email', $email)->first();
 
@@ -37,12 +38,107 @@ class AuthService
             throw new EmailNotVerifiedException();
         }
 
-        $token = $user->createToken('mobile')->plainTextToken;
+        if ($user->two_factor_enabled) {
+            $code = $this->createLoginOtp($email);
+            return [
+                'token' => null,
+                'user' => $user,
+                'requires_otp' => true,
+                'otp' => $code,
+            ];
+        }
+
+        $accessToken = $user->createToken($deviceName ?: 'mobile');
+        $token = $accessToken->plainTextToken;
+        $accessToken->accessToken->forceFill([
+            'ip_address' => $ipAddress,
+            'location' => $this->resolveLoginLocation($ipAddress),
+        ])->save();
 
         return [
             'token' => $token,
             'user'  => $user,
         ];
+    }
+
+    public function verifyLoginOtp(string $email, string $code, ?string $deviceName = null, ?string $ipAddress = null): ?array
+    {
+        $user = User::with('barangay')->where('email', $email)->first();
+        $otp = OtpCode::validFor($email, 'login_2fa')->latest()->first();
+
+        if ($user === null || $otp === null || ! hash_equals($otp->code, $code)) {
+            return null;
+        }
+
+        $otp->update(['used_at' => Carbon::now()]);
+        $accessToken = $user->createToken($deviceName ?: 'mobile');
+        $accessToken->accessToken->forceFill([
+            'ip_address' => $ipAddress,
+            'location' => $this->resolveLoginLocation($ipAddress),
+        ])->save();
+
+        return ['token' => $accessToken->plainTextToken, 'user' => $user];
+    }
+
+    public function issueAccessToken(User $user, ?string $deviceName = null, ?string $ipAddress = null): string
+    {
+        $accessToken = $user->createToken($deviceName ?: 'mobile');
+        $accessToken->accessToken->forceFill([
+            'ip_address' => $ipAddress,
+            'location' => $this->resolveLoginLocation($ipAddress),
+        ])->save();
+
+        return $accessToken->plainTextToken;
+    }
+
+    public function resendLoginOtp(string $email): ?string
+    {
+        $user = User::where('email', $email)->where('two_factor_enabled', true)->first();
+        return $user === null ? null : $this->createLoginOtp($email);
+    }
+
+    private function createLoginOtp(string $email): string
+    {
+        return DB::transaction(function () use ($email): string {
+            OtpCode::where('email', $email)
+                ->where('type', 'login_2fa')
+                ->whereNull('used_at')
+                ->update(['used_at' => Carbon::now()]);
+
+            $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+            OtpCode::create([
+                'email' => $email,
+                'code' => $code,
+                'type' => 'login_2fa',
+                'expires_at' => Carbon::now()->addMinutes(10),
+            ]);
+            return $code;
+        });
+    }
+
+    private function resolveLoginLocation(?string $ipAddress): ?string
+    {
+        if ($ipAddress === null || filter_var($ipAddress, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+            return null;
+        }
+
+        try {
+            $response = Http::timeout(2)->get("http://ip-api.com/json/{$ipAddress}", [
+                'fields' => 'status,city,regionName,country',
+            ]);
+
+            if (! $response->successful() || $response->json('status') !== 'success') {
+                return null;
+            }
+
+            return collect([
+                $response->json('city'),
+                $response->json('regionName'),
+                $response->json('country'),
+            ])->filter()->implode(', ') ?: null;
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     /**
@@ -341,6 +437,7 @@ class AuthService
             ->map(fn ($token) => [
                 'id'           => $token->id,
                 'device'       => $token->name,
+                'location'     => $token->location,
                 'last_used_at' => $token->last_used_at?->toIso8601String(),
                 'is_current'   => $token->id === $currentTokenId,
             ])
@@ -366,6 +463,11 @@ class AuthService
         }
 
         return ['success' => true, 'message' => 'Session revoked.'];
+    }
+
+    public function revokeAllSessions(User $user): void
+    {
+        $user->tokens()->delete();
     }
 
     /**

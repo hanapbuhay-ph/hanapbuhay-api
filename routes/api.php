@@ -42,6 +42,8 @@ Route::get('service-categories', [PublicController::class, 'serviceCategories'])
 Route::prefix('auth')->group(function () {
     Route::post('register', [RegisterController::class, 'register']);
     Route::post('login', [AuthController::class, 'login']);
+    Route::post('login/verify-otp', [AuthController::class, 'verifyLoginOtp']);
+    Route::post('login/resend-otp', [AuthController::class, 'resendLoginOtp']);
     Route::post('google', [GoogleAuthController::class, 'handleGoogleToken']);
     Route::post('email/verify', [EmailVerificationController::class, 'verify']);
     Route::post('email/resend-otp', [AuthController::class, 'resendOtp']);
@@ -62,11 +64,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('user/profile', [AuthController::class, 'updateProfile']);
     Route::post('user/password', [AuthController::class, 'changePassword']);
     Route::get('user/sessions', [AuthController::class, 'sessions']);
+    Route::post('user/sessions/revoke-all', [AuthController::class, 'revokeAllSessions']);
     Route::delete('user/sessions/{tokenId}', [AuthController::class, 'revokeSession']);
     // Spec alias — FCM token update
     Route::post('user/fcm-token', [NotificationController::class, 'registerDevice']);
     Route::get('user/notification-preferences', [AuthController::class, 'notificationPreferences']);
     Route::post('user/notification-preferences', [AuthController::class, 'updateNotificationPreferences']);
+    Route::get('user/two-factor', [AuthController::class, 'twoFactorPreference']);
+    Route::post('user/two-factor', [AuthController::class, 'updateTwoFactorPreference']);
     // Account deletion (user side)
     Route::post('user/delete-account', [AuthController::class, 'requestDeletion']);
     Route::delete('user/delete-account', [AuthController::class, 'cancelDeletionRequest']);

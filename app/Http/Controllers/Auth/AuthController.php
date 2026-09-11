@@ -143,8 +143,22 @@ class AuthController extends Controller
         try {
             $result = $this->authService->login(
                 $request->validated('email'),
-                $request->validated('password')
+                $request->validated('password'),
+                $request->validated('device_name'),
+                $request->ip(),
             );
+
+            if ($result['requires_otp'] ?? false) {
+                Mail::to($request->validated('email'))->queue(
+                    new OtpMail($result['otp'], 'Your Login Verification Code')
+                );
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'A verification code has been sent to your email.',
+                    'data' => ['requiresOtp' => true],
+                ]);
+            }
 
             return response()->json([
                 'success' => true,
@@ -165,6 +179,50 @@ class AuthController extends Controller
                 'message' => $e->getMessage(),
             ], 403);
         }
+    }
+
+    public function verifyLoginOtp(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'email' => ['required', 'email'],
+            'code' => ['required', 'string', 'size:6'],
+            'device_name' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $result = $this->authService->verifyLoginOtp(
+            $validated['email'],
+            $validated['code'],
+            $validated['device_name'] ?? null,
+            $request->ip(),
+        );
+
+        if ($result === null) {
+            return response()->json(['success' => false, 'message' => 'Invalid or expired verification code.'], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Login successful.',
+            'data' => [
+                'token' => $result['token'],
+                'user' => $this->authService->formatUser($result['user']),
+            ],
+        ]);
+    }
+
+    public function resendLoginOtp(Request $request): JsonResponse
+    {
+        $validated = $request->validate(['email' => ['required', 'email']]);
+        $code = $this->authService->resendLoginOtp($validated['email']);
+
+        if ($code !== null) {
+            Mail::to($validated['email'])->queue(new OtpMail($code, 'Your Login Verification Code'));
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'A new verification code has been sent.',
+        ]);
     }
 
     public function logout(Request $request): JsonResponse
@@ -278,6 +336,20 @@ class AuthController extends Controller
     }
 
     /**
+     * POST /api/user/sessions/revoke-all
+     * Revoke every active session, including the current one.
+     */
+    public function revokeAllSessions(Request $request): JsonResponse
+    {
+        $this->authService->revokeAllSessions($request->user());
+
+        return response()->json([
+            'success' => true,
+            'message' => 'All sessions revoked.',
+        ]);
+    }
+
+    /**
      * POST /api/user/delete-account
      * Submit an account deletion request. Idempotent.
      */
@@ -338,6 +410,26 @@ class AuthController extends Controller
             'success' => true,
             'message' => 'Notification preferences updated.',
             'data'    => $this->authService->getNotificationPreferences($user),
+        ]);
+    }
+
+    public function twoFactorPreference(Request $request): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => ['enabled' => (bool) $request->user()->two_factor_enabled],
+        ]);
+    }
+
+    public function updateTwoFactorPreference(Request $request): JsonResponse
+    {
+        $validated = $request->validate(['enabled' => ['required', 'boolean']]);
+        $request->user()->update(['two_factor_enabled' => $validated['enabled']]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Two-factor authentication preference updated.',
+            'data' => ['enabled' => (bool) $request->user()->fresh()->two_factor_enabled],
         ]);
     }
 }

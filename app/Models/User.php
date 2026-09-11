@@ -28,6 +28,7 @@ class User extends Authenticatable
         'barangay_id',
         'google_id',
         'is_google_account',
+        'two_factor_enabled',
         'is_active',
         'deletion_requested_at',
         'email_verified_at',
@@ -51,6 +52,7 @@ class User extends Authenticatable
             'password'                 => 'hashed',
             'is_active'                => 'boolean',
             'is_google_account'        => 'boolean',
+            'two_factor_enabled'      => 'boolean',
         ];
     }
 

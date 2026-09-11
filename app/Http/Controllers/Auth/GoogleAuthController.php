@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\CompleteProfileRequest;
+use App\Mail\OtpMail;
 use App\Models\User;
 use App\Services\Auth\AuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Laravel\Socialite\Facades\Socialite;
 use Throwable;
 
@@ -28,6 +30,7 @@ class GoogleAuthController extends Controller
     {
         $request->validate([
             'google_token' => ['required', 'string'],
+            'device_name' => ['nullable', 'string', 'max:100'],
         ]);
 
         try {
@@ -82,7 +85,28 @@ class GoogleAuthController extends Controller
                 ]);
             });
 
-            $token = $user->createToken('mobile')->plainTextToken;
+            if ($user->two_factor_enabled) {
+                $code = $this->authService->resendLoginOtp($user->email);
+                Mail::to($user->email)->queue(
+                    new OtpMail($code, 'Your Login Verification Code')
+                );
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'A verification code has been sent to your email.',
+                    'data' => [
+                        'requiresOtp' => true,
+                        'is_new_user' => $isNewUser,
+                        'user' => $this->authService->formatUser($user),
+                    ],
+                ], $isNewUser ? 201 : 200);
+            }
+
+            $token = $this->authService->issueAccessToken(
+                $user,
+                $request->input('device_name'),
+                $request->ip(),
+            );
 
             return response()->json([
                 'success' => true,
