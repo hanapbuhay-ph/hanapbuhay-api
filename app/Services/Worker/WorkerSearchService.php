@@ -19,11 +19,11 @@ class WorkerSearchService
         }
 
         $query = WorkerProfile::query()
-            ->where('verification_status', 'approved')
             ->where(function ($q) {
                 $q->whereNull('trust_tier')
                   ->orWhereNotIn('trust_tier', ['flagged', 'revoked']);
             })
+            ->whereHas('user', fn ($q) => $q->where('is_active', true))
             ->with([
                 'user.barangay',
                 'serviceCategories',
