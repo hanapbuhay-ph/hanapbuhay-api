@@ -18,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withBroadcasting(
         channels: __DIR__.'/../routes/channels.php',
+        attributes: ['middleware' => ['auth:sanctum']],
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // Return null instead of redirecting to the "login" named route.
