@@ -37,6 +37,10 @@ class MessageService
             $booking = Booking::with(['client:id,name,profile_photo_path', 'worker:id,name,profile_photo_path'])
                 ->find($bookingId);
 
+            if ($booking === null) {
+                continue;
+            }
+
             $lastMessage = Message::where('booking_id', $bookingId)
                 ->latest()
                 ->first();
@@ -49,7 +53,7 @@ class MessageService
             // Determine the "other party" from this user's perspective
             $otherParty = $user->id === $booking->client_id ? $booking->worker : $booking->client;
 
-            $conversations[] = [
+            $conversation = [
                 'booking_id'      => $booking->id,
                 'booking_code'    => $booking->booking_code,
                 'booking_status'  => $booking->status,
@@ -64,6 +68,27 @@ class MessageService
                 'last_message_at' => $lastMessage?->created_at?->toIso8601String(),
                 'unread_count'    => $unreadCount,
             ];
+
+            $otherPartyId = $otherParty?->id;
+            if ($otherPartyId === null) {
+                continue;
+            }
+
+            $existingIndex = collect($conversations)->search(
+                fn (array $existing) => ($existing['other_party']['id'] ?? null) === $otherPartyId,
+            );
+
+            if ($existingIndex === false) {
+                $conversations[] = $conversation;
+                continue;
+            }
+
+            $conversation['unread_count'] += $conversations[$existingIndex]['unread_count'] ?? 0;
+            $existingTime = $conversations[$existingIndex]['last_message_at'] ?? '';
+            $currentTime = $conversation['last_message_at'] ?? '';
+            if (strcmp($currentTime, $existingTime) > 0) {
+                $conversations[$existingIndex] = $conversation;
+            }
         }
 
         // Sort by last_message_at descending
