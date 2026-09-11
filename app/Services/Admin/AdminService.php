@@ -112,6 +112,12 @@ class AdminService
             $body,
             ['type' => 'verification_' . $newStatus],
         );
+        $this->notificationService->notify(
+            $workerProfile->user,
+            $title,
+            $body,
+            'verification_' . $newStatus,
+        );
 
         return $workerProfile;
     }

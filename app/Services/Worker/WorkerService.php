@@ -61,6 +61,11 @@ class WorkerService
             }
         }
 
+        $oldPaths = $workerProfile->verificationDocuments()->pluck('file_path')->all();
+        foreach ($oldPaths as $oldPath) {
+            Storage::disk('public')->delete($oldPath);
+        }
+
         DB::transaction(function () use ($workerProfile, $storedPaths): void {
             $workerProfile->verificationDocuments()->delete();
 

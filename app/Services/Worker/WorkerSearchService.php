@@ -133,7 +133,7 @@ class WorkerSearchService
             'serviceCategories',
             'verificationDocuments',
             'jobPosts.serviceCategory',
-            'ratings' => fn ($q) => $q->with('ratedByUser')->latest()->limit(10),
+            'ratings' => fn ($q) => $q->with('ratedByUser')->latest(),
         ])
             ->where('id', $workerProfileId)
             ->orWhere('user_id', $workerProfileId)
@@ -238,7 +238,12 @@ class WorkerSearchService
                 'is_available' => $p->is_available,
             ])->values()->all(),
             'reviews'             => $profile->ratings->map(fn ($r) => [
+                'id'               => $r->id,
+                'booking_id'       => $r->booking_id,
                 'rated_by_name' => $r->ratedByUser?->name,
+                'reviewer_avatar_url' => $r->ratedByUser?->profile_photo_path
+                    ? asset('storage/' . $r->ratedByUser->profile_photo_path)
+                    : null,
                 'score'         => $r->score,
                 'comment'       => $r->comment,
                 'created_at'    => $r->created_at?->toISOString(),
