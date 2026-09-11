@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\JobPost;
 
+use App\Helpers\DistanceHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\JobPost\CreateJobPostRequest;
 use App\Http\Requests\JobPost\UpdateJobPostRequest;
@@ -87,6 +88,18 @@ class JobPostController extends Controller
         $profile = $post->workerProfile;
         $worker = $profile?->user;
 
+        $clientBarangay = $request->user()?->barangay ?? $request->user()?->load('barangay')?->barangay;
+        $workerBarangay = $worker?->barangay;
+        $distanceKm = ($clientBarangay && $workerBarangay)
+            ? DistanceHelper::haversine(
+                (float) $clientBarangay->latitude,
+                (float) $clientBarangay->longitude,
+                (float) $workerBarangay->latitude,
+                (float) $workerBarangay->longitude,
+            )
+            : null;
+        $distanceLabel = $distanceKm !== null ? "~{$distanceKm} km" : 'Distance unavailable';
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -100,7 +113,9 @@ class JobPostController extends Controller
                         'profile_photo_url' => $worker?->profile_photo_path
                             ? asset('storage/'.$worker->profile_photo_path)
                             : null,
-                        'barangay' => $worker?->barangay?->name,
+                        'barangay' => $workerBarangay?->name,
+                        'distance_km' => $distanceKm,
+                        'distance_label' => $distanceLabel,
                         'average_rating' => (float) ($profile?->average_rating ?? 0),
                         'total_reviews' => $profile?->total_reviews ?? 0,
                         'trust_tier' => $profile?->trust_tier,
