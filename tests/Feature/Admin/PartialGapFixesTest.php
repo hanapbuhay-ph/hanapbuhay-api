@@ -97,6 +97,8 @@ it('admin can request resubmission for a pending verification', function () {
     ]);
 
     $this->mock(NotificationService::class)
+        ->shouldReceive('notify')
+        ->once()
         ->shouldReceive('sendPush')
         ->once()
         ->withArgs(fn ($user, $title) => $user->id === $worker->id && $title === 'Resubmission Required');

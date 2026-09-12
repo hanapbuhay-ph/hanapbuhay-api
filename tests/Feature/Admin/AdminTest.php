@@ -60,6 +60,30 @@ it('admin lists all verifications with pagination', function () use ($makeAdmin)
         ]);
 });
 
+it('admin can retrieve a verification detail with document URLs', function () use ($makeAdmin) {
+    $admin   = $makeAdmin();
+    $worker  = User::factory()->create(['role' => 'worker']);
+    $profile = WorkerProfile::factory()->create([
+        'user_id'             => $worker->id,
+        'verification_status' => 'pending',
+    ]);
+    VerificationDocument::factory()->create([
+        'worker_profile_id' => $profile->id,
+        'document_type'     => 'government_id',
+        'file_path'         => 'verifications/1/government_id.jpg',
+        'status'            => 'pending',
+    ]);
+
+    $this->actingAs($admin)
+        ->getJson("/api/admin/verifications/{$profile->id}")
+        ->assertStatus(200)
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('data.verification.worker_profile_id', $profile->id)
+        ->assertJsonPath('data.verification.documents.0.id', $profile->verificationDocuments->first()->id)
+        ->assertJsonPath('data.verification.documents.0.type', 'government_id')
+        ->assertJsonPath('data.verification.documents.0.file_url', asset('storage/verifications/1/government_id.jpg'));
+});
+
 it('admin filters verifications by status=pending and only pending records are returned', function () use ($makeAdmin) {
     $admin = $makeAdmin();
 
@@ -96,6 +120,8 @@ it('admin approves a worker verification', function () use ($makeAdmin) {
 
     // Mock NotificationService so no real FCM call is made
     $this->mock(NotificationService::class)
+        ->shouldReceive('notify')
+        ->once()
         ->shouldReceive('sendPush')
         ->once()
         ->withArgs(function (User $user, string $title) use ($worker): bool {
@@ -130,6 +156,8 @@ it('admin rejects a worker verification', function () use ($makeAdmin) {
     ]);
 
     $this->mock(NotificationService::class)
+        ->shouldReceive('notify')
+        ->once()
         ->shouldReceive('sendPush')
         ->once()
         ->withArgs(function (User $user, string $title) use ($worker): bool {

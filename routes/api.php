@@ -207,6 +207,7 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
     // Verification management
     Route::get('verifications', [AdminVerificationController::class, 'index']);
     Route::get('verifications/pending', [AdminVerificationController::class, 'pending']); // spec §K2 alias
+    Route::get('verifications/{workerProfileId}', [AdminVerificationController::class, 'show']);
     Route::post('verifications/{workerProfileId}/review', [AdminVerificationController::class, 'review']);
 
     // User management

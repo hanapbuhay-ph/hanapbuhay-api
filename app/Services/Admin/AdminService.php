@@ -62,6 +62,17 @@ class AdminService
         return $query->paginate(15);
     }
 
+    public function findVerification(int|string $workerProfileId): WorkerProfile
+    {
+        return WorkerProfile::query()
+            ->with([
+                'user:id,name,email,barangay_id',
+                'user.barangay:id,name',
+                'verificationDocuments:id,worker_profile_id,document_type,status,file_path',
+            ])
+            ->findOrFail($workerProfileId);
+    }
+
     /**
      * Approve, reject, or request resubmission of a worker's verification.
      * Notifies the worker after commit.

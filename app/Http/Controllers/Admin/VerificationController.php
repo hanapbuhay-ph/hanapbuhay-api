@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ReviewVerificationRequest;
+use App\Models\WorkerProfile;
 use App\Services\Admin\AdminService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,25 +25,9 @@ class VerificationController extends Controller
             $request->query('status'),
         );
 
-        $verifications = collect($paginated->items())->map(function ($profile): array {
-            return [
-                'id'                  => $profile->id,
-                'worker_profile_id'   => $profile->id,
-                'user'                => [
-                    'id'       => $profile->user?->id,
-                    'name'     => $profile->user?->name,
-                    'email'    => $profile->user?->email,
-                    'barangay' => $profile->user?->barangay?->name,
-                ],
-                'verification_status' => $profile->verification_status,
-                'documents'           => $profile->verificationDocuments->map(fn ($doc) => [
-                    'type'      => $doc->document_type,
-                    'status'    => $doc->status,
-                    'file_path' => $doc->file_path,
-                ])->values(),
-                'updated_at'          => $profile->updated_at?->toIso8601String(),
-            ];
-        });
+        $verifications = collect($paginated->items())->map(
+            fn (WorkerProfile $profile): array => $this->serializeVerification($profile),
+        );
 
         return response()->json([
             'success' => true,
@@ -67,25 +52,9 @@ class VerificationController extends Controller
     {
         $paginated = $this->adminService->listVerifications('pending');
 
-        $verifications = collect($paginated->items())->map(function ($profile): array {
-            return [
-                'id'                  => $profile->id,
-                'worker_profile_id'   => $profile->id,
-                'user'                => [
-                    'id'       => $profile->user?->id,
-                    'name'     => $profile->user?->name,
-                    'email'    => $profile->user?->email,
-                    'barangay' => $profile->user?->barangay?->name,
-                ],
-                'verification_status' => $profile->verification_status,
-                'documents'           => $profile->verificationDocuments->map(fn ($doc) => [
-                    'type'      => $doc->document_type,
-                    'status'    => $doc->status,
-                    'file_path' => $doc->file_path,
-                ])->values(),
-                'updated_at'          => $profile->updated_at?->toIso8601String(),
-            ];
-        });
+        $verifications = collect($paginated->items())->map(
+            fn (WorkerProfile $profile): array => $this->serializeVerification($profile),
+        );
 
         return response()->json([
             'success' => true,
@@ -98,6 +67,19 @@ class VerificationController extends Controller
                     'total'        => $paginated->total(),
                     'last_page'    => $paginated->lastPage(),
                 ],
+            ],
+        ]);
+    }
+
+    public function show(string $workerProfileId): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'message' => 'Verification retrieved.',
+            'data'    => [
+                'verification' => $this->serializeVerification(
+                    $this->adminService->findVerification($workerProfileId),
+                ),
             ],
         ]);
     }
@@ -128,5 +110,29 @@ class VerificationController extends Controller
                 'admin_notes'         => $request->validated('admin_notes'),
             ],
         ], 200);
+    }
+
+    private function serializeVerification(WorkerProfile $profile): array
+    {
+        return [
+            'id'                  => $profile->id,
+            'worker_profile_id'   => $profile->id,
+            'user'                => [
+                'id'       => $profile->user?->id,
+                'name'     => $profile->user?->name,
+                'email'    => $profile->user?->email,
+                'barangay' => $profile->user?->barangay?->name,
+            ],
+            'verification_status' => $profile->verification_status,
+            'trust_tier'          => $profile->trust_tier,
+            'remarks'             => $profile->verification_remarks,
+            'updated_at'          => $profile->updated_at?->toIso8601String(),
+            'documents'           => $profile->verificationDocuments->map(fn ($doc) => [
+                'id'       => $doc->id,
+                'type'     => $doc->document_type,
+                'status'   => $doc->status,
+                'file_url' => asset('storage/' . $doc->file_path),
+            ])->values(),
+        ];
     }
 }
