@@ -272,10 +272,13 @@ class AdminService
     public function getBooking(int $id): Booking
     {
         return Booking::with([
-            'client:id,name',
-            'worker:id,name',
+            'client:id,name,email,mobile_number,barangay_id',
+            'client.barangay:id,name',
+            'worker:id,name,email,mobile_number,barangay_id',
+            'worker.barangay:id,name',
             'serviceCategory:id,name',
-        ])->findOrFail($id);
+            'jobPost:id,title,description,rate_amount,rate_type',
+        ])->withCount(['messages', 'reports', 'trackingPoints'])->findOrFail($id);
     }
 
     // ──────────────────────────────────────────────────────────────────────────

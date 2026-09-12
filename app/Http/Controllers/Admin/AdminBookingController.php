@@ -88,16 +88,32 @@ class AdminBookingController extends Controller
                 'created_at'          => $booking->created_at?->toIso8601String(),
                 'updated_at'          => $booking->updated_at?->toIso8601String(),
                 'client'              => [
-                    'id'   => $booking->client?->id,
-                    'name' => $booking->client?->name,
+                    'id'            => $booking->client?->id,
+                    'name'          => $booking->client?->name,
+                    'email'         => $booking->client?->email,
+                    'mobile_number' => $booking->client?->mobile_number,
+                    'barangay'      => $booking->client?->barangay?->name,
                 ],
                 'worker'              => [
-                    'id'   => $booking->worker?->id,
-                    'name' => $booking->worker?->name,
+                    'id'            => $booking->worker?->id,
+                    'name'          => $booking->worker?->name,
+                    'email'         => $booking->worker?->email,
+                    'mobile_number' => $booking->worker?->mobile_number,
+                    'barangay'      => $booking->worker?->barangay?->name,
                 ],
                 'service_category'    => [
                     'name' => $booking->serviceCategory?->name,
                 ],
+                'job_post'            => $booking->jobPost ? [
+                    'id'          => $booking->jobPost->id,
+                    'title'       => $booking->jobPost->title,
+                    'description' => $booking->jobPost->description,
+                    'rate_amount' => (float) $booking->jobPost->rate_amount,
+                    'rate_type'   => $booking->jobPost->rate_type,
+                ] : null,
+                'messages_count'      => $booking->messages_count,
+                'reports_count'       => $booking->reports_count,
+                'tracking_points_count' => $booking->tracking_points_count,
             ],
         ], 200);
     }
