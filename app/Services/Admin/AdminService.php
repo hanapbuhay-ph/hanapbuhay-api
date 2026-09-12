@@ -655,20 +655,18 @@ class AdminService
     }
 
     /**
-     * Deactivate a service category while preserving history and related records.
+     * Delete a service category from the database.
      */
-    public function deleteCategory(User $admin, int $categoryId): ServiceCategory
+    public function deleteCategory(User $admin, int $categoryId): bool
     {
         $category = ServiceCategory::findOrFail($categoryId);
 
-        $category->update(['is_active' => false]);
-
         $this->audit($admin, 'delete_category', 'ServiceCategory', $category->id, [
             'name' => $category->name,
-            'is_active' => false,
+            'icon' => $category->icon,
         ]);
 
-        return $category->fresh();
+        return $category->delete();
     }
 
     /**

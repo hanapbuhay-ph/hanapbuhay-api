@@ -134,12 +134,12 @@ class AdminSettingsController extends Controller
      */
     public function deleteCategory(Request $request, int|string $categoryId): JsonResponse
     {
-        $category = $this->adminService->deleteCategory($request->user(), $categoryId);
+        $this->adminService->deleteCategory($request->user(), $categoryId);
 
         return response()->json([
             'success' => true,
-            'message' => 'Category deactivated.',
-            'data'    => $category,
+            'message' => 'Category deleted.',
+            'data'    => null,
         ]);
     }
 }
