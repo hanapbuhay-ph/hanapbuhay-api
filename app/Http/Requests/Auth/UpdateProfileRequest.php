@@ -16,6 +16,12 @@ class UpdateProfileRequest extends FormRequest
     {
         return [
             'name'          => ['sometimes', 'string', 'max:255'],
+            'email'         => [
+                'sometimes',
+                'email',
+                'max:255',
+                Rule::unique('users', 'email')->ignore($this->user()?->id),
+            ],
             'mobile_number' => ['sometimes', 'string', 'max:20'],
             'barangay_id'   => ['sometimes', 'integer', 'exists:barangays,id'],
             'profile_photo' => ['sometimes', 'image', 'mimes:jpeg,png', 'max:2048'],

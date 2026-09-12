@@ -380,12 +380,22 @@ class AuthService
             }
         }
 
+        $emailChanged = false;
         $fields = array_filter([
             'name'               => $request->input('name'),
             'mobile_number'      => $request->input('mobile_number'),
             'barangay_id'        => $request->input('barangay_id'),
             'profile_photo_path' => $photoPath !== $user->profile_photo_path ? $photoPath : null,
         ], fn ($v) => $v !== null);
+
+        if ($request->filled('email')) {
+            $newEmail = trim($request->input('email'));
+            if (strtolower($newEmail) !== strtolower($user->email)) {
+                $fields['email'] = $newEmail;
+                $fields['email_verified_at'] = null;
+                $emailChanged = true;
+            }
+        }
 
         // Re-include photo even when path is the same (upload replaced file)
         if ($request->hasFile('profile_photo')) {
@@ -394,6 +404,11 @@ class AuthService
 
         if (! empty($fields)) {
             $user->update($fields);
+        }
+
+        if ($emailChanged) {
+            $user->refresh();
+            $user->load('barangay');
         }
 
         return $user->load('barangay');
