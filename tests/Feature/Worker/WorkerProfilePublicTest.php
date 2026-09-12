@@ -147,6 +147,27 @@ it('response includes reviews array with correct fields', function () {
     expect($reviews[0])->toHaveKey('created_at');
 });
 
+it('returns the actual completed bookings count even when the stored worker profile count is stale', function () {
+    $client  = makeAuthClient();
+    $profile = makeApprovedWorkerProfile();
+    $profile->update(['completed_jobs' => 0]);
+
+    $category = ServiceCategory::factory()->create();
+    for ($i = 0; $i < 4; $i++) {
+        Booking::factory()->create([
+            'client_id'           => $client->id,
+            'worker_id'           => $profile->user_id,
+            'service_category_id' => $category->id,
+            'status'              => 'completed',
+        ]);
+    }
+
+    $response = $this->actingAs($client)->get("/api/workers/{$profile->id}");
+
+    $response->assertStatus(200);
+    expect($response->json('data.completed_jobs'))->toBe(4);
+});
+
 it('returns 401 for unauthenticated request', function () {
     $profile = makeApprovedWorkerProfile();
 

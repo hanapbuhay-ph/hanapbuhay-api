@@ -67,6 +67,25 @@ it('worker can mark a booking as completed via /status endpoint', function () {
     expect($booking->fresh()->status)->toBe('completed');
 });
 
+it('increments the worker completed_jobs count when a booking is marked completed', function () {
+    $booking = makeGapBooking('active');
+    $worker  = $booking->worker;
+    $profile = $worker->workerProfile()->firstOrFail();
+
+    $profile->update(['completed_jobs' => 0]);
+
+    $this->mock(NotificationService::class)
+        ->shouldReceive('notify')->once()
+        ->shouldReceive('sendPush')->once();
+
+    $this->actingAs($worker)
+        ->postJson("/api/bookings/{$booking->id}/status", ['status' => 'completed'])
+        ->assertStatus(200);
+
+    $profile->refresh();
+    expect($profile->completed_jobs)->toBe(1);
+});
+
 it('returns 422 when status value is invalid on /status endpoint', function () {
     $booking = makeGapBooking('accepted');
     $worker  = $booking->worker;

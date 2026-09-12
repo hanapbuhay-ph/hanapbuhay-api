@@ -170,10 +170,31 @@ class WorkerSearchService
         return ['distance_km' => $km, 'distance_label' => "~{$km} km"];
     }
 
+    private function getCompletedJobsCount(WorkerProfile $profile): int
+    {
+        $userId = $profile->user_id;
+
+        if ($userId === null) {
+            return (int) ($profile->completed_jobs ?? 0);
+        }
+
+        $count = \App\Models\Booking::query()
+            ->where('worker_id', $userId)
+            ->where('status', 'completed')
+            ->count();
+
+        if ($count > 0) {
+            return $count;
+        }
+
+        return (int) ($profile->completed_jobs ?? 0);
+    }
+
     private function formatWorkerSummary(WorkerProfile $profile, ?object $authBarangay): array
     {
         $workerBarangay = $profile->user?->barangay;
         $distance       = $this->resolveDistance($authBarangay, $workerBarangay);
+        $completedJobs = $this->getCompletedJobsCount($profile);
 
         return [
             'worker_profile_id'   => $profile->id,
@@ -189,7 +210,7 @@ class WorkerSearchService
             'categories'          => $profile->serviceCategories->pluck('name')->all(),
             'average_rating'      => (float) $profile->average_rating,
             'total_reviews'       => $profile->total_reviews,
-            'completed_jobs'      => $profile->completed_jobs,
+            'completed_jobs'      => $completedJobs,
             'trust_tier'          => $profile->trust_tier,
             'verification_status' => $profile->verification_status,
             'availability_status' => $profile->availability_status,
@@ -200,6 +221,7 @@ class WorkerSearchService
     {
         $workerBarangay = $profile->user?->barangay;
         $distance       = $this->resolveDistance($authBarangay, $workerBarangay);
+        $completedJobs  = $this->getCompletedJobsCount($profile);
 
         return [
             'worker_profile_id'   => $profile->id,
@@ -220,7 +242,7 @@ class WorkerSearchService
             'portfolio_photos'    => [], // TODO: needs worker_portfolio_photos table
             'average_rating'      => (float) $profile->average_rating,
             'total_reviews'       => $profile->total_reviews,
-            'completed_jobs'      => $profile->completed_jobs,
+            'completed_jobs'      => $completedJobs,
             'trust_tier'          => $profile->trust_tier,
             'verification_status' => $profile->verification_status,
             'availability_status' => $profile->availability_status,

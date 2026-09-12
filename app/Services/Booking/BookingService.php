@@ -176,6 +176,11 @@ class BookingService
             'is_worker_tracking' => false,
         ]);
 
+        $workerProfile = $booking->worker?->workerProfile;
+        if ($workerProfile) {
+            $workerProfile->increment('completed_jobs');
+        }
+
         $fresh = $booking->fresh(['client.barangay', 'worker.barangay', 'serviceCategory']);
 
         $this->notifications->notify(
