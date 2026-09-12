@@ -22,6 +22,7 @@ class AdminAuditLogController extends Controller
             $request->filled('target_type') ? $request->string('target_type')->toString()          : null,
             $request->query('date_from'),
             $request->query('date_to'),
+            $request->query('admin_name'),
         );
 
         $logs = collect($paginator->items())->map(fn ($log) => [

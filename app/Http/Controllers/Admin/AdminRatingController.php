@@ -54,7 +54,7 @@ class AdminRatingController extends Controller
      */
     public function destroy(Request $request, int|string $id): JsonResponse
     {
-        $this->adminService->deleteRating($request->user(), $id);
+        $this->adminService->deleteRating($request->user(), $id, $request->input('reason'));
 
         return response()->json([
             'success' => true,

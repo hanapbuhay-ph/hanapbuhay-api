@@ -252,6 +252,7 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
     Route::get('settings/categories', [AdminSettingsController::class, 'listCategories']);
     Route::post('settings/categories', [AdminSettingsController::class, 'createCategory']);
     Route::patch('settings/categories/{categoryId}', [AdminSettingsController::class, 'updateCategory']);
+    Route::delete('settings/categories/{categoryId}', [AdminSettingsController::class, 'deleteCategory']);
 
     // Job post oversight
     Route::get('posts', [AdminJobPostController::class, 'index']);

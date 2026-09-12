@@ -539,17 +539,18 @@ class AdminService
     /**
      * Delete a specific rating and recalculate the worker's average.
      */
-    public function deleteRating(User $admin, int $ratingId): void
+    public function deleteRating(User $admin, int $ratingId, ?string $reason = null): void
     {
         $rating = RatingReview::findOrFail($ratingId);
 
         $workerUserId = $rating->rated_user;
 
-        DB::transaction(function () use ($rating, $admin): void {
+        DB::transaction(function () use ($rating, $admin, $reason): void {
             $this->audit($admin, 'delete_rating', 'RatingReview', $rating->id, [
                 'score'        => $rating->score,
                 'rated_user'   => $rating->rated_user,
                 'booking_id'   => $rating->booking_id,
+                'reason'       => $reason,
             ]);
 
             $rating->delete();
@@ -573,7 +574,7 @@ class AdminService
     /**
      * Return paginated audit logs, optionally filtered by admin_id, action, target_type, date range.
      */
-    public function listAuditLogs(?int $adminId, ?string $action, ?string $targetType = null, ?string $dateFrom = null, ?string $dateTo = null): LengthAwarePaginator
+    public function listAuditLogs(?int $adminId, ?string $action, ?string $targetType = null, ?string $dateFrom = null, ?string $dateTo = null, ?string $adminName = null): LengthAwarePaginator
     {
         $query = AdminAuditLog::query()
             ->with('admin:id,name,email')
@@ -581,6 +582,12 @@ class AdminService
 
         if ($adminId !== null) {
             $query->where('admin_id', $adminId);
+        }
+
+        if ($adminName !== null) {
+            $query->whereHas('admin', fn ($adminQuery) =>
+                $adminQuery->where('name', 'like', "%{$adminName}%")
+            );
         }
 
         if ($action !== null) {
@@ -643,6 +650,23 @@ class AdminService
         $category->update(array_filter($data, fn ($v) => $v !== null));
 
         $this->audit($admin, 'update_category', 'ServiceCategory', $category->id, $data);
+
+        return $category->fresh();
+    }
+
+    /**
+     * Deactivate a service category while preserving history and related records.
+     */
+    public function deleteCategory(User $admin, int $categoryId): ServiceCategory
+    {
+        $category = ServiceCategory::findOrFail($categoryId);
+
+        $category->update(['is_active' => false]);
+
+        $this->audit($admin, 'delete_category', 'ServiceCategory', $category->id, [
+            'name' => $category->name,
+            'is_active' => false,
+        ]);
 
         return $category->fresh();
     }
