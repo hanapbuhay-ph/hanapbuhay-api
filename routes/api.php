@@ -250,6 +250,7 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
 
     // Job post oversight
     Route::get('posts', [AdminJobPostController::class, 'index']);
+    Route::get('posts/{id}', [AdminJobPostController::class, 'show']);
     Route::delete('posts/{id}', [AdminJobPostController::class, 'destroy']);
 
     // Account deletion queue

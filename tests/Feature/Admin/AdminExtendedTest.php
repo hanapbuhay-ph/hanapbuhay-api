@@ -443,6 +443,47 @@ it('admin can filter job posts by category_id', function () {
     expect($response->json('data.pagination.total'))->toBe(1);
 });
 
+it('admin can filter job posts by search, status, and worker verification', function () {
+    $admin   = makeAdmin();
+    $worker  = makeApprovedBookingWorker();
+    $profile = $worker->workerProfile;
+    $category = ServiceCategory::factory()->create();
+
+    JobPost::factory()->create([
+        'worker_profile_id' => $profile->id,
+        'service_category_id' => $category->id,
+        'title' => 'Emergency Plumbing Repair',
+        'is_active' => true,
+    ]);
+
+    $response = $this->actingAs($admin)
+        ->getJson('/api/admin/posts?search=Emergency&status=active&verification=verified')
+        ->assertStatus(200);
+
+    expect($response->json('data.pagination.total'))->toBe(1);
+    expect($response->json('data.posts.0.worker.verification_status'))->toBe('approved');
+    expect($response->json('data.posts.0.worker.barangay'))->not->toBeNull();
+});
+
+it('admin can retrieve a job post detail with worker, images, and booking count', function () {
+    $admin   = makeAdmin();
+    $worker  = makeApprovedBookingWorker();
+    $profile = $worker->workerProfile;
+    $category = ServiceCategory::factory()->create();
+    $post = JobPost::factory()->create([
+        'worker_profile_id' => $profile->id,
+        'service_category_id' => $category->id,
+    ]);
+
+    $this->actingAs($admin)
+        ->getJson("/api/admin/posts/{$post->id}")
+        ->assertStatus(200)
+        ->assertJsonPath('data.job_post.id', $post->id)
+        ->assertJsonPath('data.job_post.worker.name', $worker->name)
+        ->assertJsonPath('data.job_post.bookings_count', 0)
+        ->assertJsonStructure(['data' => ['job_post' => ['description', 'category', 'worker', 'images']]]);
+});
+
 it('admin can hard-delete a job post', function () {
     $admin   = makeAdmin();
     $worker  = makeApprovedBookingWorker();
@@ -455,7 +496,7 @@ it('admin can hard-delete a job post', function () {
     ]);
 
     $this->actingAs($admin)
-        ->deleteJson("/api/admin/posts/{$post->id}")
+        ->deleteJson("/api/admin/posts/{$post->id}", ['reason' => 'Violates platform policies.'])
         ->assertStatus(200)
         ->assertJsonPath('success', true)
         ->assertJsonPath('message', 'Job post permanently deleted.');
@@ -475,7 +516,9 @@ it('audit log is written when job post is hard-deleted', function () {
         'service_category_id' => $cat->id,
     ]);
 
-    $this->actingAs($admin)->deleteJson("/api/admin/posts/{$post->id}");
+    $this->actingAs($admin)->deleteJson("/api/admin/posts/{$post->id}", [
+        'reason' => 'Violates platform policies.',
+    ]);
 
     expect(AdminAuditLog::where('admin_id', $admin->id)->where('action', 'delete_job_post')->exists())->toBeTrue();
 });
@@ -484,7 +527,7 @@ it('returns 404 when hard-deleting a non-existent post', function () {
     $admin = makeAdmin();
 
     $this->actingAs($admin)
-        ->deleteJson('/api/admin/posts/99999')
+        ->deleteJson('/api/admin/posts/99999', ['reason' => 'Invalid post cleanup.'])
         ->assertStatus(404);
 });
 

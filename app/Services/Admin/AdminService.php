@@ -721,11 +721,19 @@ class AdminService
     /**
      * List all active job posts with optional category and worker filters.
      */
-    public function listJobPosts(?int $categoryId, ?int $workerProfileId): LengthAwarePaginator
+    public function listJobPosts(
+        ?int $categoryId,
+        ?int $workerProfileId,
+        ?int $barangayId = null,
+        ?string $status = null,
+        ?string $verification = null,
+        ?string $search = null,
+    ): LengthAwarePaginator
     {
         $query = JobPost::withTrashed()
             ->with([
-                'workerProfile.user:id,name',
+                'workerProfile.user:id,name,barangay_id',
+                'workerProfile.user.barangay:id,name',
                 'serviceCategory:id,name',
             ])
             ->orderByDesc('created_at');
@@ -738,20 +746,84 @@ class AdminService
             $query->where('worker_profile_id', $workerProfileId);
         }
 
+        if ($barangayId !== null) {
+            $query->whereHas('workerProfile.user', fn ($userQuery) =>
+                $userQuery->where('barangay_id', $barangayId)
+            );
+        }
+
+        if ($status === 'active') {
+            $query->where('is_active', true)->whereNull('deleted_at');
+        } elseif ($status === 'inactive') {
+            $query->where(function ($statusQuery): void {
+                $statusQuery->where('is_active', false)->orWhereNotNull('deleted_at');
+            });
+        }
+
+        if ($verification === 'verified') {
+            $query->whereHas('workerProfile', fn ($profileQuery) =>
+                $profileQuery->where('verification_status', 'approved')
+            );
+        } elseif ($verification === 'unverified') {
+            $query->whereHas('workerProfile', fn ($profileQuery) =>
+                $profileQuery->where('verification_status', '!=', 'approved')
+            );
+        }
+
+        if ($search !== null) {
+            $query->where(function ($searchQuery) use ($search): void {
+                $searchQuery->where('title', 'like', "%{$search}%")
+                    ->orWhereHas('workerProfile.user', fn ($userQuery) =>
+                        $userQuery->where('name', 'like', "%{$search}%")
+                    );
+            });
+        }
+
         return $query->paginate(15);
+    }
+
+    public function getJobPost(int|string $postId): JobPost
+    {
+        return JobPost::withTrashed()
+            ->with([
+                'serviceCategory:id,name,icon',
+                'images',
+                'workerProfile.user:id,name,email,mobile_number,barangay_id,profile_photo_path',
+                'workerProfile.user.barangay:id,name',
+            ])
+            ->withCount('bookings')
+            ->findOrFail($postId);
     }
 
     /**
      * Force-delete (hard delete) a job post as admin.
      */
-    public function forceDeleteJobPost(User $admin, int $postId): void
+    public function forceDeleteJobPost(User $admin, int $postId, string $reason): void
     {
         $post = JobPost::withTrashed()->findOrFail($postId);
 
         $this->audit($admin, 'delete_job_post', 'JobPost', $post->id, [
             'title'             => $post->title,
             'worker_profile_id' => $post->worker_profile_id,
+            'reason'            => $reason,
         ]);
+
+        $post->load('workerProfile.user');
+        if ($post->workerProfile?->user) {
+            $this->notificationService->notify(
+                $post->workerProfile->user,
+                'Job post removed',
+                $reason,
+                'job_post_removed',
+                ['job_post_id' => $post->id],
+            );
+            $this->notificationService->sendPush(
+                $post->workerProfile->user,
+                'Job post removed',
+                $reason,
+                ['type' => 'job_post_removed', 'job_post_id' => (string) $post->id],
+            );
+        }
 
         $post->forceDelete();
     }
