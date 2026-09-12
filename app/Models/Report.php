@@ -42,4 +42,9 @@ class Report extends Model
     {
         return $this->belongsTo(User::class, 'reported_user');
     }
+
+    public function resolvedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'resolved_by');
+    }
 }

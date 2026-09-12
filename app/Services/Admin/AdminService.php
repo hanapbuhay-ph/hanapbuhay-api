@@ -318,6 +318,7 @@ class AdminService
             'booking:id,booking_code',
             'reporter:id,name',
             'reportedUser:id,name',
+            'resolvedBy:id,name',
         ])->findOrFail($id);
     }
 

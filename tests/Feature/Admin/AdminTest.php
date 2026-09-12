@@ -463,7 +463,7 @@ it('admin views a single report with evidence_paths and admin_notes', function (
         ->assertStatus(200)
         ->assertJsonPath('success', true)
         ->assertJsonPath('data.id', $report->id)
-        ->assertJsonStructure(['data' => ['evidence_paths', 'admin_notes', 'description']]);
+        ->assertJsonStructure(['data' => ['evidence_urls', 'admin_notes', 'description', 'resolution_action', 'resolved_by', 'resolved_at']]);
 });
 
 it('admin resolves a report and status is resolved in DB', function () use ($makeAdmin, $makeReport) {

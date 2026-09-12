@@ -63,7 +63,7 @@ class AdminReportController extends Controller
 
     /**
      * GET /api/admin/reports/{id}
-     * View a single report's full detail, including evidence_paths and admin_notes.
+    * View a single report's full detail, including evidence URLs and resolution metadata.
      */
     public function show(int|string $id): JsonResponse
     {
@@ -76,9 +76,14 @@ class AdminReportController extends Controller
                 'id'             => $report->id,
                 'reason'         => $report->reason,
                 'description'    => $report->description,
-                'evidence_paths' => $report->evidence_paths,
+                'evidence_urls'  => collect($report->evidence_paths ?? [])
+                    ->map(fn (string $path): string => asset('storage/' . $path))
+                    ->values(),
                 'status'         => $report->status,
                 'admin_notes'    => $report->admin_remarks,
+                'resolution_action' => $report->resolution_action,
+                'resolved_by'    => $report->resolvedBy?->name,
+                'resolved_at'    => $report->resolved_at?->toIso8601String(),
                 'created_at'     => $report->created_at?->toIso8601String(),
                 'updated_at'     => $report->updated_at?->toIso8601String(),
                 'booking'        => [
