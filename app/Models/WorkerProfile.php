@@ -43,6 +43,11 @@ class WorkerProfile extends Model
         return $this->hasMany(VerificationDocument::class);
     }
 
+    public function verificationHistory(): HasMany
+    {
+        return $this->hasMany(VerificationHistory::class);
+    }
+
     public function serviceCategories(): BelongsToMany
     {
         return $this->belongsToMany(

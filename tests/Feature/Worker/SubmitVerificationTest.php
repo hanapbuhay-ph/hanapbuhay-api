@@ -3,6 +3,7 @@
 use App\Models\User;
 use App\Models\WorkerProfile;
 use App\Models\VerificationDocument;
+use App\Models\VerificationHistory;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 
@@ -125,6 +126,8 @@ it('creates verification_documents rows in the database', function () {
     expect(VerificationDocument::where('worker_profile_id', $profileId)->count())->toBe(3);
     expect(VerificationDocument::where('worker_profile_id', $profileId)
         ->where('document_type', 'government_id')->exists())->toBeTrue();
+    expect(VerificationHistory::where('worker_profile_id', $profileId)
+        ->where('status', 'pending')->whereNull('changed_by')->exists())->toBeTrue();
 });
 
 it('sets worker_profiles verification_status to pending', function () {

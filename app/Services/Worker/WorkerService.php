@@ -6,6 +6,7 @@ use App\Exceptions\BusinessRuleException;
 use App\Http\Requests\Worker\SubmitVerificationRequest;
 use App\Http\Requests\Worker\UpdateWorkerProfileRequest;
 use App\Models\User;
+use App\Models\VerificationHistory;
 use App\Models\WorkerProfile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -80,6 +81,12 @@ class WorkerService
             $workerProfile->update([
                 'verification_status'  => 'pending',
                 'verification_remarks' => null,
+            ]);
+
+            VerificationHistory::create([
+                'worker_profile_id' => $workerProfile->id,
+                'status'            => 'pending',
+                'remarks'           => null,
             ]);
         });
 

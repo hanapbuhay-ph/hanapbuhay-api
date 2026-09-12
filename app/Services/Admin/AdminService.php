@@ -9,6 +9,7 @@ use App\Models\RatingReview;
 use App\Models\Report;
 use App\Models\ServiceCategory;
 use App\Models\User;
+use App\Models\VerificationHistory;
 use App\Models\WorkerProfile;
 use App\Services\Notification\NotificationService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -52,6 +53,8 @@ class AdminService
                 'user:id,name,email,barangay_id',
                 'user.barangay:id,name',
                 'verificationDocuments:id,worker_profile_id,document_type,status,file_path',
+                'verificationHistory:id,worker_profile_id,changed_by,status,remarks,created_at',
+                'verificationHistory.changedBy:id,name',
             ])
             ->orderByDesc('updated_at');
 
@@ -69,6 +72,8 @@ class AdminService
                 'user:id,name,email,barangay_id',
                 'user.barangay:id,name',
                 'verificationDocuments:id,worker_profile_id,document_type,status,file_path',
+                'verificationHistory:id,worker_profile_id,changed_by,status,remarks,created_at',
+                'verificationHistory.changedBy:id,name',
             ])
             ->findOrFail($workerProfileId);
     }
@@ -77,7 +82,7 @@ class AdminService
      * Approve, reject, or request resubmission of a worker's verification.
      * Notifies the worker after commit.
      */
-    public function reviewVerification(int|string $workerProfileId, string $action, ?string $adminNotes): WorkerProfile
+    public function reviewVerification(User $admin, int|string $workerProfileId, string $action, ?string $adminNotes): WorkerProfile
     {
         $workerProfile = WorkerProfile::findOrFail($workerProfileId);
 
@@ -88,7 +93,7 @@ class AdminService
             default                => 'rejected',
         };
 
-        DB::transaction(function () use ($workerProfile, $newStatus, $adminNotes): void {
+        DB::transaction(function () use ($admin, $workerProfile, $newStatus, $adminNotes): void {
             $updateData = [
                 'verification_status'  => $newStatus,
                 'verification_remarks' => $adminNotes,
@@ -104,6 +109,13 @@ class AdminService
             $workerProfile->update($updateData);
 
             $workerProfile->verificationDocuments()->update(['status' => $newStatus]);
+
+            VerificationHistory::create([
+                'worker_profile_id' => $workerProfile->id,
+                'changed_by'        => $admin->id,
+                'status'            => $newStatus,
+                'remarks'           => $adminNotes,
+            ]);
         });
 
         // Reload the user relationship for the push notification
@@ -180,7 +192,7 @@ class AdminService
      */
     public function getUser(int $id): User
     {
-        $user = User::findOrFail($id);
+        $user = User::with('barangay:id,name')->findOrFail($id);
 
         if ($user->role === 'worker') {
             $user->load([

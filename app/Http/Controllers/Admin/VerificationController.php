@@ -91,6 +91,7 @@ class VerificationController extends Controller
     public function review(ReviewVerificationRequest $request, string $workerProfileId): JsonResponse
     {
         $workerProfile = $this->adminService->reviewVerification(
+            $request->user(),
             $workerProfileId,
             $request->validated('action'),
             $request->validated('admin_notes'),
@@ -127,6 +128,13 @@ class VerificationController extends Controller
             'trust_tier'          => $profile->trust_tier,
             'remarks'             => $profile->verification_remarks,
             'updated_at'          => $profile->updated_at?->toIso8601String(),
+            'history'             => $profile->verificationHistory->map(fn ($entry) => [
+                'id'         => $entry->id,
+                'status'     => $entry->status,
+                'remarks'    => $entry->remarks,
+                'changed_at' => $entry->created_at?->toIso8601String(),
+                'changed_by' => $entry->changedBy?->name ?? 'Worker',
+            ])->values(),
             'documents'           => $profile->verificationDocuments->map(fn ($doc) => [
                 'id'       => $doc->id,
                 'type'     => $doc->document_type,

@@ -6,6 +6,7 @@ use App\Models\Report;
 use App\Models\ServiceCategory;
 use App\Models\User;
 use App\Models\VerificationDocument;
+use App\Models\VerificationHistory;
 use App\Models\WorkerProfile;
 use App\Services\Notification\NotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -140,6 +141,8 @@ it('admin approves a worker verification', function () use ($makeAdmin) {
 
     expect($profile->fresh()->verification_status)->toBe('approved');
     expect($profile->verificationDocuments()->where('status', 'approved')->exists())->toBeTrue();
+    expect(VerificationHistory::where('worker_profile_id', $profile->id)
+        ->where('status', 'approved')->where('changed_by', $admin->id)->exists())->toBeTrue();
 });
 
 it('admin rejects a worker verification', function () use ($makeAdmin) {
