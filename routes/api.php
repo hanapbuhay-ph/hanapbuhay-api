@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AdminAuditLogController;
 use App\Http\Controllers\Admin\AdminBookingController;
+use App\Http\Controllers\Admin\AdminChatLogController;
 use App\Http\Controllers\Admin\AdminDeletionController;
 use App\Http\Controllers\Admin\AdminJobPostController;
 use App\Http\Controllers\Admin\AdminRatingController;
@@ -237,6 +238,10 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
 
     // Force cancel booking
     Route::post('bookings/{id}/cancel', [AdminBookingController::class, 'forceCancel']);
+
+    // Chat log oversight
+    Route::get('chat-logs', [AdminChatLogController::class, 'index']);
+    Route::get('chat-logs/{bookingId}', [AdminChatLogController::class, 'show']);
 
     // Audit logs
     Route::get('audit-logs', [AdminAuditLogController::class, 'index']);
