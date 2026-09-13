@@ -387,6 +387,44 @@ class AdminService
             ])
             ->all();
 
+        $activityTrend = collect(range(0, 6))
+            ->map(function (int $offset): array {
+                $date = now()->subDays(6 - $offset)->toDateString();
+                $day = now()->subDays(6 - $offset);
+
+                return [
+                    'date' => $date,
+                    'label' => $day->translatedFormat('D'),
+                    'bookings' => Booking::whereDate('created_at', $date)->count(),
+                    'verifications' => VerificationHistory::whereDate('created_at', $date)->count(),
+                    'active_jobs' => JobPost::where('is_active', true)
+                        ->whereNull('deleted_at')
+                        ->whereDate('created_at', $date)
+                        ->count(),
+                ];
+            })
+            ->values()
+            ->all();
+
+        $topServiceCategories = ServiceCategory::query()
+            ->leftJoin('bookings', 'service_categories.id', '=', 'bookings.service_category_id')
+            ->where('service_categories.is_active', true)
+            ->select(
+                'service_categories.name',
+                DB::raw('COUNT(bookings.id) as booking_count'),
+            )
+            ->groupBy('service_categories.id', 'service_categories.name')
+            ->orderByDesc('booking_count')
+            ->orderBy('service_categories.name')
+            ->limit(8)
+            ->get()
+            ->map(fn ($category) => [
+                'name'  => $category->name,
+                'count' => (int) $category->booking_count,
+            ])
+            ->values()
+            ->all();
+
         return [
             'total_users'                  => User::count(),
             'total_workers'                => User::where('role', 'worker')->count(),
@@ -400,6 +438,8 @@ class AdminService
             'open_reports'                 => Report::where('status', 'under_review')->count(),
             'open_disputes'                => Report::where('status', 'under_review')->count(),
             'total_active_job_posts'       => JobPost::where('is_active', true)->whereNull('deleted_at')->count(),
+            'activity_trend'               => $activityTrend,
+            'top_service_categories'      => $topServiceCategories,
             'recent_activity'              => $recentActivity,
         ];
     }

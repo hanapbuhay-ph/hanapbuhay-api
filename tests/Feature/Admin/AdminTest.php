@@ -579,10 +579,18 @@ it('dashboard returns all stat keys with correct integer values', function () us
                 'completed_bookings',
                 'total_reports',
                 'open_reports',
+                'activity_trend' => [
+                    ['date', 'label', 'bookings', 'verifications', 'active_jobs'],
+                ],
             ],
         ]);
 
     $data = $response->json('data');
+
+    expect($data['activity_trend'])->toHaveCount(7);
+    expect($data['activity_trend'][0]['bookings'])->toBeInt();
+    expect($data['activity_trend'][0]['verifications'])->toBeInt();
+    expect($data['activity_trend'][0]['active_jobs'])->toBeInt();
 
     // Integer fields must be non-negative integers
     $integerFields = [
