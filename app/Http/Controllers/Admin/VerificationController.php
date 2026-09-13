@@ -123,6 +123,7 @@ class VerificationController extends Controller
                 'name'     => $profile->user?->name,
                 'email'    => $profile->user?->email,
                 'barangay' => $profile->user?->barangay?->name,
+                'profile_photo_url' => self::profilePhotoUrl($profile->user?->profile_photo_path),
             ],
             'verification_status' => $profile->verification_status,
             'trust_tier'          => $profile->trust_tier,
@@ -142,5 +143,16 @@ class VerificationController extends Controller
                 'file_url' => asset('storage/' . $doc->file_path),
             ])->values(),
         ];
+    }
+
+    private static function profilePhotoUrl(?string $path): ?string
+    {
+        if (!$path) {
+            return null;
+        }
+
+        return str_starts_with($path, 'http://') || str_starts_with($path, 'https://')
+            ? $path
+            : asset('storage/' . $path);
     }
 }

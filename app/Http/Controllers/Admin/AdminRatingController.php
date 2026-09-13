@@ -28,8 +28,16 @@ class AdminRatingController extends Controller
             'id'           => $r->id,
             'score'        => $r->score,
             'comment'      => $r->comment,
-            'rated_by'     => ['id' => $r->ratedByUser?->id, 'name' => $r->ratedByUser?->name],
-            'rated_user'   => ['id' => $r->ratedUser?->id,   'name' => $r->ratedUser?->name],
+            'rated_by'     => [
+                'id'                => $r->ratedByUser?->id,
+                'name'              => $r->ratedByUser?->name,
+                'profile_photo_url' => self::profilePhotoUrl($r->ratedByUser?->profile_photo_path),
+            ],
+            'rated_user'   => [
+                'id'                => $r->ratedUser?->id,
+                'name'              => $r->ratedUser?->name,
+                'profile_photo_url' => self::profilePhotoUrl($r->ratedUser?->profile_photo_path),
+            ],
             'booking'      => ['id' => $r->booking?->id,     'booking_code' => $r->booking?->booking_code],
             'created_at'   => $r->created_at?->toIso8601String(),
         ]);
@@ -47,6 +55,17 @@ class AdminRatingController extends Controller
                 ],
             ],
         ]);
+    }
+
+    private static function profilePhotoUrl(?string $path): ?string
+    {
+        if (!$path) {
+            return null;
+        }
+
+        return str_starts_with($path, 'http://') || str_starts_with($path, 'https://')
+            ? $path
+            : asset('storage/' . $path);
     }
 
     /**

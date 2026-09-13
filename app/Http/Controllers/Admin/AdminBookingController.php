@@ -36,12 +36,14 @@ class AdminBookingController extends Controller
                 'scheduled_at'     => $booking->scheduled_at?->toIso8601String(),
                 'created_at'       => $booking->created_at?->toIso8601String(),
                 'client'           => [
-                    'id'   => $booking->client?->id,
-                    'name' => $booking->client?->name,
+                    'id'                => $booking->client?->id,
+                    'name'              => $booking->client?->name,
+                    'profile_photo_url' => self::profilePhotoUrl($booking->client?->profile_photo_path),
                 ],
                 'worker'           => [
-                    'id'   => $booking->worker?->id,
-                    'name' => $booking->worker?->name,
+                    'id'                => $booking->worker?->id,
+                    'name'              => $booking->worker?->name,
+                    'profile_photo_url' => self::profilePhotoUrl($booking->worker?->profile_photo_path),
                 ],
                 'service_category' => [
                     'name' => $booking->serviceCategory?->name,
@@ -62,6 +64,17 @@ class AdminBookingController extends Controller
                 ],
             ],
         ], 200);
+    }
+
+    private static function profilePhotoUrl(?string $path): ?string
+    {
+        if (!$path) {
+            return null;
+        }
+
+        return str_starts_with($path, 'http://') || str_starts_with($path, 'https://')
+            ? $path
+            : asset('storage/' . $path);
     }
 
     /**

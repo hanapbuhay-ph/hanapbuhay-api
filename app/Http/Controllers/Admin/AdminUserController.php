@@ -35,6 +35,7 @@ class AdminUserController extends Controller
                 'email'      => $user->email,
                 'role'       => $user->role,
                 'barangay'   => $user->barangay?->name,
+                'profile_photo_url' => self::profilePhotoUrl($user->profile_photo_path),
                 'is_active'  => $user->is_active,
                 'created_at' => $user->created_at?->toIso8601String(),
             ];
@@ -53,6 +54,17 @@ class AdminUserController extends Controller
                 ],
             ],
         ], 200);
+    }
+
+    private static function profilePhotoUrl(?string $path): ?string
+    {
+        if (!$path) {
+            return null;
+        }
+
+        return str_starts_with($path, 'http://') || str_starts_with($path, 'https://')
+            ? $path
+            : asset('storage/' . $path);
     }
 
     /**

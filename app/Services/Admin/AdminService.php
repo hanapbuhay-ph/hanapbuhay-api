@@ -50,7 +50,7 @@ class AdminService
     {
         $query = WorkerProfile::query()
             ->with([
-                'user:id,name,email,barangay_id',
+                'user:id,name,email,barangay_id,profile_photo_path',
                 'user.barangay:id,name',
                 'verificationDocuments:id,worker_profile_id,document_type,status,file_path',
                 'verificationHistory:id,worker_profile_id,changed_by,status,remarks,created_at',
@@ -233,8 +233,8 @@ class AdminService
     {
         $query = Booking::query()
             ->with([
-                'client:id,name',
-                'worker:id,name',
+                'client:id,name,profile_photo_path',
+                'worker:id,name,profile_photo_path',
                 'serviceCategory:id,name',
             ])
             ->orderByDesc('created_at');
@@ -374,6 +374,7 @@ class AdminService
     public function dashboardStats(): array
     {
         $today = now()->toDateString();
+        $yesterday = now()->subDay()->toDateString();
 
         $recentActivity = AdminAuditLog::with('admin:id,name')
             ->latest()
@@ -434,6 +435,7 @@ class AdminService
             'active_bookings'              => Booking::where('status', 'active')->count(),
             'completed_bookings'           => Booking::where('status', 'completed')->count(),
             'completed_bookings_today'     => Booking::where('status', 'completed')->whereDate('updated_at', $today)->count(),
+            'completed_bookings_yesterday' => Booking::where('status', 'completed')->whereDate('updated_at', $yesterday)->count(),
             'total_reports'                => Report::count(),
             'open_reports'                 => Report::where('status', 'under_review')->count(),
             'open_disputes'                => Report::where('status', 'under_review')->count(),
@@ -539,8 +541,8 @@ class AdminService
         $query = RatingReview::query()
             ->with([
                 'booking:id,booking_code',
-                'ratedByUser:id,name',
-                'ratedUser:id,name',
+                'ratedByUser:id,name,profile_photo_path',
+                'ratedUser:id,name,profile_photo_path',
             ])
             ->orderByDesc('created_at');
 
