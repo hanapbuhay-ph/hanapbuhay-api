@@ -76,6 +76,12 @@ class GoogleAuthController extends Controller
                                 ->first();
 
                 if ($existing !== null) {
+                    if ($existing->is_active === false) {
+                        throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException(
+                            'Your account has been suspended.'
+                        );
+                    }
+
                     if ($adminOnly && $existing->role !== 'admin') {
                         throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException(
                             'This Google account is not configured as an admin.'

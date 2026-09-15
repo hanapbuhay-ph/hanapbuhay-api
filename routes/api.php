@@ -58,7 +58,7 @@ Route::prefix('auth')->group(function () {
 | Protected Routes — valid Sanctum token required
 |--------------------------------------------------------------------------
 */
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::post('auth/logout', [AuthController::class, 'logout']);
     Route::post('auth/google/complete-profile', [GoogleAuthController::class, 'completeProfile']);
     Route::get('user', [AuthController::class, 'me']);
@@ -94,7 +94,7 @@ Route::middleware('auth:sanctum')->group(function () {
 | Booking Routes
 |--------------------------------------------------------------------------
 */
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::get('bookings', [BookingController::class, 'index']);
     Route::get('bookings/{id}', [BookingController::class, 'show']);
     Route::post('bookings/{id}/cancel', [BookingController::class, 'cancel']);
@@ -103,12 +103,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('bookings/{id}/status', [BookingController::class, 'updateStatus']);
 });
 
-Route::middleware(['auth:sanctum', 'client'])->group(function () {
+Route::middleware(['auth:sanctum', 'active', 'client'])->group(function () {
     Route::post('bookings', [BookingController::class, 'store']);
     Route::post('bookings/{id}/reschedule', [BookingController::class, 'reschedule']);
 });
 
-Route::middleware(['auth:sanctum', 'worker'])->group(function () {
+Route::middleware(['auth:sanctum', 'active', 'worker'])->group(function () {
     Route::post('bookings/{id}/accept', [BookingController::class, 'accept']);
     Route::post('bookings/{id}/decline', [BookingController::class, 'decline']);
     Route::post('bookings/{id}/respond', [BookingController::class, 'respond']); // spec unified endpoint
@@ -121,7 +121,7 @@ Route::middleware(['auth:sanctum', 'worker'])->group(function () {
 | Ratings Routes (spec URL: POST /api/ratings)
 |--------------------------------------------------------------------------
 */
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::post('ratings', [RatingController::class, 'store']); // spec §H1
 });
 
@@ -130,7 +130,7 @@ Route::middleware('auth:sanctum')->group(function () {
 | Report Routes
 |--------------------------------------------------------------------------
 */
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::post('reports', [ReportController::class, 'store']);
     Route::get('reports', [ReportController::class, 'index']);
     Route::get('reports/{id}', [ReportController::class, 'show']);
@@ -141,7 +141,7 @@ Route::middleware('auth:sanctum')->group(function () {
 | Message Routes
 |--------------------------------------------------------------------------
 */
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'active'])->group(function () {
     // Spec URLs
     Route::get('messages', [MessageController::class, 'inbox']);
     Route::get('messages/{bookingId}', [MessageController::class, 'thread']);
@@ -157,7 +157,7 @@ Route::middleware('auth:sanctum')->group(function () {
 | Tracking Routes
 |--------------------------------------------------------------------------
 */
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::post('bookings/{id}/tracking/start', [TrackingController::class, 'start']);
     Route::post('bookings/{id}/tracking/update', [TrackingController::class, 'update']);
     Route::post('bookings/{id}/tracking/location', [TrackingController::class, 'location']); // spec alias
@@ -170,7 +170,7 @@ Route::middleware('auth:sanctum')->group(function () {
 | Notification Routes
 |--------------------------------------------------------------------------
 */
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::post('notifications/register-device', [NotificationController::class, 'registerDevice']);
     Route::get('notifications', [NotificationController::class, 'index']);
     Route::post('notifications/read-all', [NotificationController::class, 'markAllRead']);
@@ -182,7 +182,7 @@ Route::middleware('auth:sanctum')->group(function () {
 | Worker Routes — auth:sanctum + worker role required
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth:sanctum', 'worker'])->prefix('worker')->group(function () {
+Route::middleware(['auth:sanctum', 'active', 'worker'])->prefix('worker')->group(function () {
     Route::post('verification/submit', [VerificationController::class, 'submit']);
     Route::get('verification/status', [VerificationController::class, 'status']);
     Route::post('profile', [WorkerProfileController::class, 'update']);
@@ -204,7 +204,7 @@ Route::middleware(['auth:sanctum', 'worker'])->prefix('worker')->group(function 
 | Admin Routes — auth:sanctum + admin role required
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function () {
+Route::middleware(['auth:sanctum', 'active', 'admin'])->prefix('admin')->group(function () {
     // Verification management
     Route::get('verifications', [AdminVerificationController::class, 'index']);
     Route::get('verifications/pending', [AdminVerificationController::class, 'pending']); // spec §K2 alias

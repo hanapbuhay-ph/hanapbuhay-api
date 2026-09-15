@@ -30,7 +30,7 @@ class AuthService
 
         // Intentionally the same message for "no account" and "wrong password"
         // to avoid leaking which emails are registered (user enumeration).
-        if ($user === null || ! Hash::check($password, $user->password)) {
+        if ($user === null || $user->is_active === false || ! Hash::check($password, $user->password)) {
             throw new InvalidCredentialsException();
         }
 
@@ -66,7 +66,7 @@ class AuthService
         $user = User::with('barangay')->where('email', $email)->first();
         $otp = OtpCode::validFor($email, 'login_2fa')->latest()->first();
 
-        if ($user === null || $otp === null || ! hash_equals($otp->code, $code)) {
+        if ($user === null || $user->is_active === false || $otp === null || ! hash_equals($otp->code, $code)) {
             return null;
         }
 
