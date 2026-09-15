@@ -10,9 +10,9 @@ use App\Services\Auth\AuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Laravel\Socialite\Facades\Socialite;
 use Throwable;
 
 class GoogleAuthController extends Controller
@@ -28,14 +28,31 @@ class GoogleAuthController extends Controller
      */
     public function handleGoogleToken(Request $request): JsonResponse
     {
+        $tokenInfo = [];
+
         $request->validate([
             'google_token' => ['required', 'string'],
             'device_name' => ['nullable', 'string', 'max:100'],
+            'admin_only' => ['sometimes', 'boolean'],
         ]);
 
         try {
-            $googleUser = Socialite::driver('google')
-                ->userFromToken($request->google_token);
+            $tokenInfo = Http::timeout(5)
+                ->get('https://oauth2.googleapis.com/tokeninfo', [
+                    'id_token' => $request->google_token,
+                ])
+                ->throw()
+                ->json();
+
+            $expectedClientId = (string) config('services.google.client_id');
+            if (
+                empty($tokenInfo['sub'])
+                || empty($tokenInfo['email'])
+                || ($tokenInfo['email_verified'] ?? 'false') !== 'true'
+                || ($expectedClientId !== '' && ($tokenInfo['aud'] ?? null) !== $expectedClientId)
+            ) {
+                throw new \RuntimeException('Google token claims are invalid.');
+            }
         } catch (Throwable $e) {
             Log::warning('Google token verification failed', [
                 'error' => $e->getMessage(),
@@ -49,19 +66,26 @@ class GoogleAuthController extends Controller
 
         try {
             $isNewUser = false;
+            $adminOnly = $request->boolean('admin_only');
 
-            $user = DB::transaction(function () use ($googleUser, &$isNewUser): User {
+            $user = DB::transaction(function () use ($tokenInfo, $adminOnly, &$isNewUser): User {
                 // Look up by google_id first, fall back to email so a user
                 // who previously registered manually can link their Google account.
-                $existing = User::where('google_id', $googleUser->getId())
-                                ->orWhere('email', $googleUser->getEmail())
+                $existing = User::where('google_id', $tokenInfo['sub'])
+                                ->orWhere('email', $tokenInfo['email'])
                                 ->first();
 
                 if ($existing !== null) {
+                    if ($adminOnly && $existing->role !== 'admin') {
+                        throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException(
+                            'This Google account is not configured as an admin.'
+                        );
+                    }
+
                     // Link google_id if they registered manually before.
                     if ($existing->google_id === null) {
                         $existing->update([
-                            'google_id'         => $googleUser->getId(),
+                            'google_id'         => $tokenInfo['sub'],
                             'is_google_account' => true,
                         ]);
                     }
@@ -69,15 +93,21 @@ class GoogleAuthController extends Controller
                     return $existing->load('barangay');
                 }
 
+                if ($adminOnly) {
+                    throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException(
+                        'This Google account is not configured as an admin.'
+                    );
+                }
+
                 $isNewUser = true;
 
                 // New Google users get role=null intentionally — they must
                 // call complete-profile before they can use the app.
                 return User::create([
-                    'name'               => $googleUser->getName(),
-                    'email'              => $googleUser->getEmail(),
-                    'google_id'          => $googleUser->getId(),
-                    'profile_photo_path' => $googleUser->getAvatar(),
+                    'name'               => $tokenInfo['name'] ?? $tokenInfo['email'],
+                    'email'              => $tokenInfo['email'],
+                    'google_id'          => $tokenInfo['sub'],
+                    'profile_photo_path' => $tokenInfo['picture'] ?? null,
                     'role'               => null,
                     'is_google_account'  => true,
                     'password'           => null,
@@ -117,9 +147,14 @@ class GoogleAuthController extends Controller
                     'user'        => $this->authService->formatUser($user),
                 ],
             ], $isNewUser ? 201 : 200);
+        } catch (\Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 403);
         } catch (Throwable $e) {
             Log::error('Google sign-in failed', [
-                'email' => $googleUser->getEmail() ?? 'unknown',
+                'email' => $tokenInfo['email'] ?? 'unknown',
                 'error' => $e->getMessage(),
             ]);
 
