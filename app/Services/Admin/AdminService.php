@@ -375,6 +375,8 @@ class AdminService
     {
         $today = now()->toDateString();
         $yesterday = now()->subDay()->toDateString();
+        $startDate = now()->subDays(6)->startOfDay();
+        $endDate = now()->endOfDay();
 
         $recentActivity = AdminAuditLog::with('admin:id,name')
             ->latest()
@@ -388,24 +390,38 @@ class AdminService
             ])
             ->all();
 
-        $activityTrend = collect(range(0, 6))
-            ->map(function (int $offset): array {
-                $date = now()->subDays(6 - $offset)->toDateString();
-                $day = now()->subDays(6 - $offset);
+        $trendCounts = function ($query) use ($startDate, $endDate): array {
+            return $query
+                ->whereBetween('created_at', [$startDate, $endDate])
+                ->selectRaw('DATE(created_at) as activity_date, COUNT(*) as total')
+                ->groupBy('activity_date')
+                ->pluck('total', 'activity_date')
+                ->map(fn ($total) => (int) $total)
+                ->all();
+        };
 
-                return [
-                    'date' => $date,
-                    'label' => $day->translatedFormat('D'),
-                    'bookings' => Booking::whereDate('created_at', $date)->count(),
-                    'verifications' => VerificationHistory::whereDate('created_at', $date)->count(),
-                    'active_jobs' => JobPost::where('is_active', true)
-                        ->whereNull('deleted_at')
-                        ->whereDate('created_at', $date)
-                        ->count(),
-                ];
-            })
-            ->values()
-            ->all();
+        $bookingTrend = $trendCounts(Booking::query());
+        $verificationTrend = $trendCounts(VerificationHistory::query());
+        $jobTrend = $trendCounts(
+            JobPost::query()->where('is_active', true)->whereNull('deleted_at')
+        );
+
+        $activityTrend = collect(range(0, 6))->map(function (int $offset) use (
+            $bookingTrend,
+            $verificationTrend,
+            $jobTrend,
+        ): array {
+            $day = now()->subDays(6 - $offset);
+            $date = $day->toDateString();
+
+            return [
+                'date' => $date,
+                'label' => $day->translatedFormat('D'),
+                'bookings' => $bookingTrend[$date] ?? 0,
+                'verifications' => $verificationTrend[$date] ?? 0,
+                'active_jobs' => $jobTrend[$date] ?? 0,
+            ];
+        })->values()->all();
 
         $topServiceCategories = ServiceCategory::query()
             ->leftJoin('bookings', 'service_categories.id', '=', 'bookings.service_category_id')
@@ -426,20 +442,41 @@ class AdminService
             ->values()
             ->all();
 
+        $userCounts = User::query()
+            ->selectRaw('COUNT(*) as total_users')
+            ->selectRaw("SUM(role = 'worker') as total_workers")
+            ->selectRaw("SUM(role = 'client') as total_clients")
+            ->first();
+        $bookingCounts = Booking::query()
+            ->selectRaw('COUNT(*) as total_bookings')
+            ->selectRaw("SUM(status = 'active') as active_bookings")
+            ->selectRaw("SUM(status = 'completed') as completed_bookings")
+            ->selectRaw("SUM(status = 'completed' AND DATE(updated_at) = ?) as completed_bookings_today", [$today])
+            ->selectRaw("SUM(status = 'completed' AND DATE(updated_at) = ?) as completed_bookings_yesterday", [$yesterday])
+            ->first();
+        $reportCounts = Report::query()
+            ->selectRaw('COUNT(*) as total_reports')
+            ->selectRaw("SUM(status = 'under_review') as open_reports")
+            ->first();
+        $activeJobPosts = JobPost::query()
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->count();
+
         return [
-            'total_users'                  => User::count(),
-            'total_workers'                => User::where('role', 'worker')->count(),
-            'total_clients'                => User::where('role', 'client')->count(),
+            'total_users'                  => (int) $userCounts->total_users,
+            'total_workers'                => (int) $userCounts->total_workers,
+            'total_clients'                => (int) $userCounts->total_clients,
             'pending_verifications'        => WorkerProfile::where('verification_status', 'pending')->count(),
-            'total_bookings'               => Booking::count(),
-            'active_bookings'              => Booking::where('status', 'active')->count(),
-            'completed_bookings'           => Booking::where('status', 'completed')->count(),
-            'completed_bookings_today'     => Booking::where('status', 'completed')->whereDate('updated_at', $today)->count(),
-            'completed_bookings_yesterday' => Booking::where('status', 'completed')->whereDate('updated_at', $yesterday)->count(),
-            'total_reports'                => Report::count(),
-            'open_reports'                 => Report::where('status', 'under_review')->count(),
-            'open_disputes'                => Report::where('status', 'under_review')->count(),
-            'total_active_job_posts'       => JobPost::where('is_active', true)->whereNull('deleted_at')->count(),
+            'total_bookings'               => (int) $bookingCounts->total_bookings,
+            'active_bookings'              => (int) $bookingCounts->active_bookings,
+            'completed_bookings'           => (int) $bookingCounts->completed_bookings,
+            'completed_bookings_today'     => (int) $bookingCounts->completed_bookings_today,
+            'completed_bookings_yesterday' => (int) $bookingCounts->completed_bookings_yesterday,
+            'total_reports'                => (int) $reportCounts->total_reports,
+            'open_reports'                 => (int) $reportCounts->open_reports,
+            'open_disputes'                => (int) $reportCounts->open_reports,
+            'total_active_job_posts'       => $activeJobPosts,
             'activity_trend'               => $activityTrend,
             'top_service_categories'      => $topServiceCategories,
             'recent_activity'              => $recentActivity,
