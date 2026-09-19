@@ -104,6 +104,7 @@ class WorkerService
         return [
             'verification_status' => $workerProfile->verification_status,
             'trust_tier'          => $workerProfile->trust_tier,
+            'availability_status' => $workerProfile->availability_status,
             'remarks'             => $workerProfile->verification_remarks,
             'documents'           => $workerProfile->verificationDocuments->map(fn ($doc) => [
                 'type'   => $doc->document_type,

@@ -34,7 +34,11 @@ class MessageService
         $conversations = [];
 
         foreach ($bookingIds as $bookingId) {
-            $booking = Booking::with(['client:id,name,role,profile_photo_path', 'worker:id,name,role,profile_photo_path'])
+            $booking = Booking::with([
+                'client:id,name,role,profile_photo_path,last_seen_at',
+                'worker:id,name,role,profile_photo_path,last_seen_at',
+                'worker.workerProfile:id,user_id,availability_status',
+            ])
                 ->find($bookingId);
 
             if ($booking === null) {
@@ -61,6 +65,8 @@ class MessageService
                     'id'                => $otherParty?->id,
                     'name'              => $otherParty?->name,
                     'role'              => $otherParty?->role,
+                    'is_online'         => $otherParty?->last_seen_at?->gte(now()->subMinutes(5)) ?? false,
+                    'availability_status' => $otherParty?->workerProfile?->availability_status,
                     'profile_photo_url' => $otherParty?->profile_photo_path
                         ? asset('storage/' . $otherParty->profile_photo_path)
                         : null,

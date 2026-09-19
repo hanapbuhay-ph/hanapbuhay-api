@@ -23,6 +23,7 @@ use App\Http\Controllers\JobPost\JobPostController;
 use App\Http\Controllers\JobPost\JobPostImageController;
 use App\Http\Controllers\Message\MessageController;
 use App\Http\Controllers\Notification\NotificationController;
+use App\Http\Controllers\PresenceController;
 use App\Http\Controllers\PublicController;
 use App\Http\Controllers\Rating\RatingController;
 use App\Http\Controllers\Report\ReportController;
@@ -60,6 +61,7 @@ Route::prefix('auth')->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::middleware(['auth:sanctum', 'active'])->group(function () {
+    Route::post('presence/heartbeat', [PresenceController::class, 'heartbeat']);
     Route::post('auth/logout', [AuthController::class, 'logout']);
     Route::post('auth/google/complete-profile', [GoogleAuthController::class, 'completeProfile']);
     Route::get('user', [AuthController::class, 'me']);

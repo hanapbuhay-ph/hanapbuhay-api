@@ -25,6 +25,7 @@ class User extends Authenticatable
         'mobile_number',
         'role',
         'profile_photo_path',
+        'last_seen_at',
         'barangay_id',
         'google_id',
         'is_google_account',
@@ -53,6 +54,7 @@ class User extends Authenticatable
             'is_active'                => 'boolean',
             'is_google_account'        => 'boolean',
             'two_factor_enabled'      => 'boolean',
+            'last_seen_at'            => 'datetime',
         ];
     }
 
