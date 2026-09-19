@@ -131,6 +131,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::middleware(['auth:sanctum', 'active'])->group(function () {
+    Route::get('report-reasons', [PublicController::class, 'reportReasons']);
     Route::post('reports', [ReportController::class, 'store']);
     Route::get('reports', [ReportController::class, 'index']);
     Route::get('reports/{id}', [ReportController::class, 'show']);
@@ -253,6 +254,10 @@ Route::middleware(['auth:sanctum', 'active', 'admin'])->prefix('admin')->group(f
     Route::post('settings/categories', [AdminSettingsController::class, 'createCategory']);
     Route::patch('settings/categories/{categoryId}', [AdminSettingsController::class, 'updateCategory']);
     Route::delete('settings/categories/{categoryId}', [AdminSettingsController::class, 'deleteCategory']);
+    Route::get('settings/report-reasons', [AdminSettingsController::class, 'listReportReasons']);
+    Route::post('settings/report-reasons', [AdminSettingsController::class, 'createReportReason']);
+    Route::patch('settings/report-reasons/{reportReasonId}', [AdminSettingsController::class, 'updateReportReason']);
+    Route::delete('settings/report-reasons/{reportReasonId}', [AdminSettingsController::class, 'deleteReportReason']);
 
     // Job post oversight
     Route::get('posts', [AdminJobPostController::class, 'index']);

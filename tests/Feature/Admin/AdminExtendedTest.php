@@ -393,6 +393,45 @@ it('audit log written on category create and update', function () {
     expect(AdminAuditLog::where('admin_id', $admin->id)->where('action', 'update_category')->exists())->toBeTrue();
 });
 
+it('admin can create, list, update, and delete report reasons', function () {
+    $admin = makeAdmin();
+
+    $create = $this->actingAs($admin)
+        ->postJson('/api/admin/settings/report-reasons', [
+            'label' => 'Spam Listing',
+            'description' => 'This listing appears to be spam.',
+            'is_active' => true,
+        ])
+        ->assertStatus(201)
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('data.label', 'Spam Listing');
+
+    $reasonId = $create->json('data.id');
+
+    $this->actingAs($admin)
+        ->getJson('/api/admin/settings/report-reasons')
+        ->assertStatus(200)
+        ->assertJsonPath('success', true)
+        ->assertJsonFragment(['label' => 'Spam Listing']);
+
+    $this->actingAs($admin)
+        ->patchJson("/api/admin/settings/report-reasons/{$reasonId}", [
+            'label' => 'Spam Listing Updated',
+            'description' => 'Updated description.',
+            'is_active' => false,
+        ])
+        ->assertStatus(200)
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('data.label', 'Spam Listing Updated');
+
+    $this->actingAs($admin)
+        ->deleteJson("/api/admin/settings/report-reasons/{$reasonId}")
+        ->assertStatus(200)
+        ->assertJsonPath('success', true);
+
+    $this->assertDatabaseMissing('report_reasons', ['id' => $reasonId]);
+});
+
 // ══════════════════════════════════════════════════════════════════════════════
 // JOB POST OVERSIGHT
 // ══════════════════════════════════════════════════════════════════════════════

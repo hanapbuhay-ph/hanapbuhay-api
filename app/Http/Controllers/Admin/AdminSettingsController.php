@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\CreateCategoryRequest;
-use App\Http\Requests\Admin\PostAnnouncementRequest;
 use App\Http\Requests\Admin\UpdateCategoryRequest;
 use App\Services\Admin\AdminService;
 use Illuminate\Http\JsonResponse;
@@ -142,4 +141,72 @@ class AdminSettingsController extends Controller
             'data'    => null,
         ]);
     }
-}
+    /**
+     * GET /api/admin/settings/report-reasons
+     */
+    public function listReportReasons(): JsonResponse
+    {
+        $reasons = $this->adminService->listReportReasons();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Report reasons retrieved.',
+            'data'    => $reasons,
+        ]);
+    }
+
+    /**
+     * POST /api/admin/settings/report-reasons
+     */
+    public function createReportReason(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'code' => ['nullable', 'string', 'max:100', 'regex:/^[a-z0-9_\-]+$/'],
+            'label' => ['required', 'string', 'max:150'],
+            'description' => ['nullable', 'string', 'max:500'],
+            'is_active' => ['sometimes', 'boolean'],
+        ]);
+
+        $reason = $this->adminService->createReportReason($request->user(), $validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Report reason created.',
+            'data' => $reason,
+        ], 201);
+    }
+
+    /**
+     * PATCH /api/admin/settings/report-reasons/{reportReasonId}
+     */
+    public function updateReportReason(Request $request, int|string $reportReasonId): JsonResponse
+    {
+        $validated = $request->validate([
+            'code' => ['sometimes', 'string', 'max:100', 'regex:/^[a-z0-9_\-]+$/'],
+            'label' => ['sometimes', 'string', 'max:150'],
+            'description' => ['nullable', 'string', 'max:500'],
+            'is_active' => ['sometimes', 'boolean'],
+        ]);
+
+        $reason = $this->adminService->updateReportReason($request->user(), $reportReasonId, $validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Report reason updated.',
+            'data' => $reason,
+        ]);
+    }
+
+    /**
+     * DELETE /api/admin/settings/report-reasons/{reportReasonId}
+     */
+    public function deleteReportReason(Request $request, int|string $reportReasonId): JsonResponse
+    {
+        $this->adminService->deleteReportReason($request->user(), $reportReasonId);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Report reason deleted.',
+            'data' => null,
+        ]);
+    }}

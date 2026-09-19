@@ -7,6 +7,7 @@ use App\Models\Booking;
 use App\Models\JobPost;
 use App\Models\RatingReview;
 use App\Models\Report;
+use App\Models\ReportReason;
 use App\Models\ServiceCategory;
 use App\Models\User;
 use App\Models\VerificationHistory;
@@ -749,6 +750,76 @@ class AdminService
     }
 
     /**
+     * List report reasons configured by admins.
+     */
+    public function listReportReasons(): \Illuminate\Database\Eloquent\Collection
+    {
+        return ReportReason::orderBy('label')->get();
+    }
+
+    /**
+     * Create a report reason.
+     */
+    public function createReportReason(User $admin, array $data): ReportReason
+    {
+        $payload = [
+            'code' => $data['code'] ?? strtolower(str_replace([' ', '-'], '_', trim($data['label']))),
+            'label' => trim($data['label']),
+            'description' => $data['description'] ?? null,
+            'is_active' => $data['is_active'] ?? true,
+        ];
+
+        $payload['code'] = preg_replace('/[^a-z0-9_]/', '', strtolower($payload['code'])) ?: 'other';
+
+        $reason = ReportReason::create($payload);
+
+        $this->audit($admin, 'create_report_reason', 'ReportReason', $reason->id, $payload);
+
+        return $reason->fresh();
+    }
+
+    /**
+     * Update an existing report reason.
+     */
+    public function updateReportReason(User $admin, int $reasonId, array $data): ReportReason
+    {
+        $reason = ReportReason::findOrFail($reasonId);
+
+        if (isset($data['label'])) {
+            $data['label'] = trim($data['label']);
+
+            if (! isset($data['code']) || trim((string) $data['code']) === '') {
+                $data['code'] = preg_replace('/[^a-z0-9_]/', '', strtolower(str_replace([' ', '-'], '_', $data['label'])));
+            }
+        }
+
+        if (isset($data['code'])) {
+            $data['code'] = preg_replace('/[^a-z0-9_]/', '', strtolower(trim((string) $data['code'])));
+        }
+
+        $reason->update(array_filter($data, fn ($v) => $v !== null));
+
+        $this->audit($admin, 'update_report_reason', 'ReportReason', $reason->id, $data);
+
+        return $reason->fresh();
+    }
+
+    /**
+     * Delete a report reason.
+     */
+    public function deleteReportReason(User $admin, int $reasonId): bool
+    {
+        $reason = ReportReason::findOrFail($reasonId);
+
+        $this->audit($admin, 'delete_report_reason', 'ReportReason', $reason->id, [
+            'code' => $reason->code,
+            'label' => $reason->label,
+        ]);
+
+        return $reason->delete();
+    }
+
+    /**
      * GET /admin/settings — aggregate all platform settings into one response.
      */
     public function getSettings(): array
@@ -759,11 +830,10 @@ class AdminService
 
         return [
             'service_categories'      => ServiceCategory::orderBy('name')->get(['id', 'name', 'icon', 'is_active']),
-            'report_reasons'          => [
-                'no_show', 'unsatisfactory_work', 'misconduct',
-                'non_payment', 'unsafe_environment', 'abusive_behavior',
-                'false_information', 'other',
-            ],
+            'report_reasons'          => ReportReason::query()
+                ->orderBy('label')
+                ->pluck('code')
+                ->all(),
             'notification_templates'  => [
                 'booking_accepted'   => 'Your booking {booking_code} has been accepted.',
                 'booking_declined'   => 'Your booking {booking_code} has been declined.',

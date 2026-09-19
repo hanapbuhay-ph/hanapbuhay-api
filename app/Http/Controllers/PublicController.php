@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Barangay;
+use App\Models\ReportReason;
 use App\Models\ServiceCategory;
 use Illuminate\Http\JsonResponse;
 
@@ -56,6 +57,23 @@ class PublicController extends Controller
             'success' => true,
             'message' => 'Categories retrieved.',
             'data'    => $categories,
+        ]);
+    }
+
+    /**
+     * GET /api/report-reasons
+     * Return active report reasons for the client/worker report form.
+     */
+    public function reportReasons(): JsonResponse
+    {
+        $reasons = ReportReason::where('is_active', true)
+            ->orderBy('label')
+            ->get(['id', 'code', 'label', 'description']);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Report reasons retrieved.',
+            'data'    => $reasons,
         ]);
     }
 }
