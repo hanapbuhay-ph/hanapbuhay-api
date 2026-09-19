@@ -328,7 +328,7 @@ class AdminService
      * Supports both spec field name (resolution_action) and legacy (action).
      * Side-effects are enforced inside a transaction.
      */
-    public function resolveReport(int $id, string $status, ?string $adminNotes, ?string $action = null, ?string $resolutionAction = null): Report
+    public function resolveReport(int $id, string $status, ?string $adminNotes, ?string $action = null, ?string $resolutionAction = null, ?int $resolvedById = null): Report
     {
         $report = Report::with(['reportedUser.workerProfile'])->findOrFail($id);
 
@@ -344,10 +344,20 @@ class AdminService
             };
         }
 
-        DB::transaction(function () use ($report, $status, $adminNotes, $effectiveAction): void {
+        $storedResolutionAction = $resolutionAction ?? match ($effectiveAction) {
+            'suspend_user' => 'account_suspended',
+            'revoke_trust_tier' => 'verification_revoked',
+            'warn_user' => 'warning_issued',
+            default => null,
+        };
+
+        DB::transaction(function () use ($report, $status, $adminNotes, $effectiveAction, $storedResolutionAction, $resolvedById): void {
             $report->update([
-                'status'        => $status,
-                'admin_remarks' => $adminNotes,
+                'status'            => $status,
+                'admin_remarks'     => $adminNotes,
+                'resolution_action' => $status === 'resolved' ? $storedResolutionAction : null,
+                'resolved_by'       => $status === 'resolved' ? $resolvedById : null,
+                'resolved_at'       => $status === 'resolved' ? now() : null,
             ]);
 
             if ($status === 'resolved' && $effectiveAction !== null) {
@@ -508,6 +518,13 @@ class AdminService
             'remarks'       => $remarks,
         ]);
 
+        $this->notificationService->notify(
+            $profile->user,
+            'Trust Tier Updated',
+            "Your trust tier has been updated to {$tier}.",
+            'trust_tier_updated',
+            ['type' => 'trust_tier_updated', 'tier' => $tier],
+        );
         $this->notificationService->sendPush(
             $profile->user,
             'Trust Tier Updated',

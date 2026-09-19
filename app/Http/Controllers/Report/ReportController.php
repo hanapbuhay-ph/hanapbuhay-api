@@ -54,10 +54,19 @@ class ReportController extends Controller
             'id'            => $r->id,
             'booking_id'    => $r->booking_id,
             'booking_code'  => $r->booking->booking_code,
-            'reported_user' => $r->reportedUser->name,
+            'reported_user' => $this->userSummary($r->reportedUser),
+            'reporter'      => $this->userSummary($r->reporter),
             'reason'        => $r->reason,
+            'reason_label'  => $r->reportReason?->label ?? $r->reason,
+            'description'   => $r->description,
+            'evidence_paths'=> $r->evidence_paths ?? [],
             'status'        => $r->status,
+            'admin_remarks' => $r->admin_remarks,
+            'resolution_action' => $r->resolution_action,
+            'resolved_by'   => $r->resolvedBy?->name,
+            'resolved_at'   => $r->resolved_at?->toISOString(),
             'created_at'    => $r->created_at->toISOString(),
+            'updated_at'    => $r->updated_at?->toISOString(),
         ]);
 
         return response()->json([
@@ -89,15 +98,37 @@ class ReportController extends Controller
                     'id'             => $report->id,
                     'booking_id'     => $report->booking_id,
                     'booking_code'   => $report->booking->booking_code,
-                    'reported_user'  => $report->reportedUser->name,
+                    'reported_user'  => $this->userSummary($report->reportedUser),
+                    'reporter'       => $this->userSummary($report->reporter),
                     'reason'         => $report->reason,
+                    'reason_label'   => $report->reportReason?->label ?? $report->reason,
                     'description'    => $report->description,
                     'evidence_paths' => $report->evidence_paths,
                     'status'         => $report->status,
                     'admin_remarks'  => $report->admin_remarks,
+                    'resolution_action' => $report->resolution_action,
+                    'resolved_by'    => $report->resolvedBy?->name,
+                    'resolved_at'    => $report->resolved_at?->toISOString(),
                     'created_at'     => $report->created_at->toISOString(),
+                    'updated_at'     => $report->updated_at?->toISOString(),
                 ],
             ],
         ]);
+    }
+
+    private function userSummary(?\App\Models\User $user): ?array
+    {
+        if ($user === null) {
+            return null;
+        }
+
+        return [
+            'id' => $user->id,
+            'name' => $user->name,
+            'profile_photo_url' => $user->profile_photo_path
+                ? asset('storage/' . $user->profile_photo_path)
+                : null,
+            'profile_photo_path' => $user->profile_photo_path,
+        ];
     }
 }

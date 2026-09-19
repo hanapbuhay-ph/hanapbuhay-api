@@ -57,9 +57,16 @@ class ReportService
     {
         return Report::with([
                 'booking:id,booking_code',
-                'reportedUser:id,name',
+                'reporter:id,name,profile_photo_path',
+                'reportedUser:id,name,profile_photo_path',
+                'resolvedBy:id,name',
+                'reportReason:code,label',
+                'reportReason:code,label',
             ])
-            ->where('reported_by', $user->id)
+            ->where(function ($query) use ($user): void {
+                $query->where('reported_by', $user->id)
+                    ->orWhere('reported_user', $user->id);
+            })
             ->orderByDesc('created_at')
             ->paginate(15);
     }
@@ -68,7 +75,8 @@ class ReportService
     {
         return Report::with([
                 'booking:id,booking_code',
-                'reportedUser:id,name',
+                'reporter:id,name,profile_photo_path',
+                'reportedUser:id,name,profile_photo_path',
             ])
             ->findOrFail($id);
     }

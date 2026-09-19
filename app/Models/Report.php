@@ -47,4 +47,9 @@ class Report extends Model
     {
         return $this->belongsTo(User::class, 'resolved_by');
     }
+
+    public function reportReason(): BelongsTo
+    {
+        return $this->belongsTo(ReportReason::class, 'reason', 'code');
+    }
 }

@@ -363,7 +363,7 @@ it('reporter can view their own report → 200 with full detail', function () us
         ->assertJsonPath('data.report.admin_remarks', null);
 });
 
-it('non-reporter (even if on the booking) cannot view the report → 403', function () use ($makeBooking) {
+it('reported worker can view a client report → 200', function () use ($makeBooking) {
     $client  = makeBookingClient();
     $worker  = makeApprovedBookingWorker();
     $booking = $makeBooking($client->id, $worker->id);
@@ -379,7 +379,8 @@ it('non-reporter (even if on the booking) cannot view the report → 403', funct
 
     $this->actingAs($worker)
         ->getJson("/api/reports/{$report->id}")
-        ->assertStatus(403);
+        ->assertStatus(200)
+        ->assertJsonPath('data.report.id', $report->id);
 });
 
 it('non-existent report → 404', function () {

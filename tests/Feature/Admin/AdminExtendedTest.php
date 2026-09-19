@@ -61,8 +61,10 @@ it('admin can update a worker trust tier', function () {
     $worker  = makeApprovedBookingWorker();
     $profile = $worker->workerProfile;
 
-    $this->mock(NotificationService::class)
-        ->shouldReceive('sendPush')->once();
+    $notificationService = $this->mock(NotificationService::class);
+    $notificationService->shouldReceive('notify')->once()
+        ->andReturnUsing(fn () => new \App\Models\HanapbuhayNotification());
+    $notificationService->shouldReceive('sendPush')->once();
 
     $this->actingAs($admin)
         ->postJson("/api/admin/workers/{$profile->id}/trust-tier", [
@@ -82,7 +84,10 @@ it('audit log is written when trust tier is updated', function () {
     $worker  = makeApprovedBookingWorker();
     $profile = $worker->workerProfile;
 
-    $this->mock(NotificationService::class)->shouldReceive('sendPush')->once();
+    $notificationService = $this->mock(NotificationService::class);
+    $notificationService->shouldReceive('notify')->once()
+        ->andReturnUsing(fn () => new \App\Models\HanapbuhayNotification());
+    $notificationService->shouldReceive('sendPush')->once();
 
     $this->actingAs($admin)
         ->postJson("/api/admin/workers/{$profile->id}/trust-tier", [
