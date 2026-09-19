@@ -143,7 +143,11 @@ class WorkerSearchService
             throw new BusinessRuleException('Worker not found.', 404);
         }
 
-        if ($authUser->role !== 'admin' && in_array($profile->trust_tier, ['flagged', 'revoked'], true)) {
+        if (
+            $authUser->role !== 'admin'
+            && $profile->user_id !== $authUser->id
+            && in_array($profile->trust_tier, ['flagged', 'revoked'], true)
+        ) {
             throw new BusinessRuleException('Worker not found.', 404);
         }
 

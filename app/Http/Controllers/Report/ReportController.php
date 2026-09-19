@@ -48,7 +48,9 @@ class ReportController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $paginator = $this->service->listForUser($request->user());
+        $view = $request->query('view', 'all');
+        abort_unless(in_array($view, ['all', 'submitted', 'received'], true), 422, 'Invalid report view.');
+        $paginator = $this->service->listForUser($request->user(), $view);
 
         $reports = $paginator->getCollection()->map(fn (Report $r) => [
             'id'            => $r->id,

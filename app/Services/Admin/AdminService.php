@@ -769,9 +769,9 @@ class AdminService
     /**
      * List report reasons configured by admins.
      */
-    public function listReportReasons(): \Illuminate\Database\Eloquent\Collection
+    public function listReportReasons(?string $audience = null): \Illuminate\Database\Eloquent\Collection
     {
-        return ReportReason::orderBy('label')->get();
+        return ReportReason::when($audience, fn ($query) => $query->where('audience', $audience))->orderBy('label')->get();
     }
 
     /**
@@ -783,6 +783,7 @@ class AdminService
             'code' => $data['code'] ?? strtolower(str_replace([' ', '-'], '_', trim($data['label']))),
             'label' => trim($data['label']),
             'description' => $data['description'] ?? null,
+            'audience' => $data['audience'] ?? 'client',
             'is_active' => $data['is_active'] ?? true,
         ];
 

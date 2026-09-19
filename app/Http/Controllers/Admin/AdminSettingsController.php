@@ -144,9 +144,9 @@ class AdminSettingsController extends Controller
     /**
      * GET /api/admin/settings/report-reasons
      */
-    public function listReportReasons(): JsonResponse
+    public function listReportReasons(Request $request): JsonResponse
     {
-        $reasons = $this->adminService->listReportReasons();
+        $reasons = $this->adminService->listReportReasons($request->query('audience'));
 
         return response()->json([
             'success' => true,
@@ -164,6 +164,7 @@ class AdminSettingsController extends Controller
             'code' => ['nullable', 'string', 'max:100', 'regex:/^[a-z0-9_\-]+$/'],
             'label' => ['required', 'string', 'max:150'],
             'description' => ['nullable', 'string', 'max:500'],
+            'audience' => ['sometimes', 'in:client,worker'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
@@ -185,6 +186,7 @@ class AdminSettingsController extends Controller
             'code' => ['sometimes', 'string', 'max:100', 'regex:/^[a-z0-9_\-]+$/'],
             'label' => ['sometimes', 'string', 'max:150'],
             'description' => ['nullable', 'string', 'max:500'],
+            'audience' => ['sometimes', 'in:client,worker'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
 

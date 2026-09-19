@@ -13,6 +13,7 @@ class ReportReason extends Model
         'code',
         'label',
         'description',
+        'audience',
         'is_active',
     ];
 

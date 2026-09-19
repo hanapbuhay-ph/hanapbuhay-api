@@ -64,11 +64,12 @@ class PublicController extends Controller
      * GET /api/report-reasons
      * Return active report reasons for the client/worker report form.
      */
-    public function reportReasons(): JsonResponse
+    public function reportReasons(\Illuminate\Http\Request $request): JsonResponse
     {
         $reasons = ReportReason::where('is_active', true)
+            ->where('audience', $request->user()->role === 'worker' ? 'worker' : 'client')
             ->orderBy('label')
-            ->get(['id', 'code', 'label', 'description']);
+            ->get(['id', 'code', 'label', 'description', 'audience']);
 
         return response()->json([
             'success' => true,

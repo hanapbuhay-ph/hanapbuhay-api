@@ -5,12 +5,17 @@ namespace App\Services\Report;
 use App\Models\Booking;
 use App\Models\Report;
 use App\Models\User;
+use App\Services\Notification\NotificationService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use RuntimeException;
 
 class ReportService
 {
+    public function __construct(
+        private readonly NotificationService $notifications,
+    ) {}
+
     /**
      * @throws RuntimeException
      */
@@ -42,7 +47,7 @@ class ReportService
             }
         }
 
-        return Report::create([
+        $report = Report::create([
             'booking_id'     => $booking->id,
             'reported_by'    => $reporter->id,
             'reported_user'  => $reportedUserId,
@@ -51,9 +56,25 @@ class ReportService
             'evidence_paths' => $evidencePaths,
             'status'         => 'under_review',
         ]);
+
+        $reportedUser = User::find($reportedUserId);
+        if ($reportedUser !== null) {
+            $title = 'New report received';
+            $body = "A report has been submitted about your account for booking #{$booking->booking_code}.";
+            $data = [
+                'type' => 'report_received',
+                'report_id' => (string) $report->id,
+                'booking_id' => (string) $booking->id,
+            ];
+
+            $this->notifications->notify($reportedUser, $title, $body, 'report_received', $data);
+            $this->notifications->sendPush($reportedUser, $title, $body, $data);
+        }
+
+        return $report;
     }
 
-    public function listForUser(User $user): LengthAwarePaginator
+    public function listForUser(User $user, string $view = 'all'): LengthAwarePaginator
     {
         return Report::with([
                 'booking:id,booking_code',
@@ -61,12 +82,10 @@ class ReportService
                 'reportedUser:id,name,profile_photo_path',
                 'resolvedBy:id,name',
                 'reportReason:code,label',
-                'reportReason:code,label',
             ])
-            ->where(function ($query) use ($user): void {
-                $query->where('reported_by', $user->id)
-                    ->orWhere('reported_user', $user->id);
-            })
+            ->when($view === 'submitted', fn ($query) => $query->where('reported_by', $user->id))
+            ->when($view === 'received', fn ($query) => $query->where('reported_user', $user->id))
+            ->when($view === 'all', fn ($query) => $query->where(fn ($q) => $q->where('reported_by', $user->id)->orWhere('reported_user', $user->id)))
             ->orderByDesc('created_at')
             ->paginate(15);
     }
