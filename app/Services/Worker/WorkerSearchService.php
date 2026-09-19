@@ -111,7 +111,10 @@ class WorkerSearchService
 
         if ($request->filled('search')) {
             $search = $request->string('search');
-            $query->whereHas('user', fn ($q) => $q->where('name', 'like', "%{$search}%"));
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('user', fn ($userQuery) => $userQuery->where('name', 'like', "%{$search}%"))
+                    ->orWhereHas('serviceCategories', fn ($categoryQuery) => $categoryQuery->where('service_categories.name', 'like', "%{$search}%"));
+            });
         }
 
         $workers = $query->get();
