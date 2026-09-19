@@ -17,6 +17,7 @@ use App\Http\Controllers\Auth\EmailVerificationController;
 use App\Http\Controllers\Auth\GoogleAuthController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Booking\BookingController;
+use App\Http\Controllers\Client\ClientController;
 use App\Http\Controllers\Feed\FeedController;
 use App\Http\Controllers\JobPost\JobPostController;
 use App\Http\Controllers\JobPost\JobPostImageController;
@@ -109,6 +110,7 @@ Route::middleware(['auth:sanctum', 'active', 'client'])->group(function () {
 });
 
 Route::middleware(['auth:sanctum', 'active', 'worker'])->group(function () {
+    Route::get('clients/{clientId}', [ClientController::class, 'show']);
     Route::post('bookings/{id}/accept', [BookingController::class, 'accept']);
     Route::post('bookings/{id}/decline', [BookingController::class, 'decline']);
     Route::post('bookings/{id}/respond', [BookingController::class, 'respond']); // spec unified endpoint
