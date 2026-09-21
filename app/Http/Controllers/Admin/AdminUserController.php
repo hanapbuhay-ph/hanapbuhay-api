@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Admin;
 
 use App\Exceptions\BusinessRuleException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\StoreAdminUserRequest;
 use App\Http\Requests\Admin\ToggleUserStatusRequest;
+use App\Http\Requests\Admin\UpdateAdminUserRequest;
 use App\Services\Admin\AdminService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -33,7 +35,9 @@ class AdminUserController extends Controller
                 'id'         => $user->id,
                 'name'       => $user->name,
                 'email'      => $user->email,
+                'mobile_number' => $user->mobile_number,
                 'role'       => $user->role,
+                'barangay_id'=> $user->barangay_id,
                 'barangay'   => $user->barangay?->name,
                 'profile_photo_url' => self::profilePhotoUrl($user->profile_photo_path),
                 'is_active'  => $user->is_active,
@@ -54,6 +58,17 @@ class AdminUserController extends Controller
                 ],
             ],
         ], 200);
+    }
+
+    public function store(StoreAdminUserRequest $request): JsonResponse
+    {
+        $user = $this->adminService->createUser($request->validated(), $request->user());
+
+        return response()->json([
+            'success' => true,
+            'message' => 'User created.',
+            'data' => self::userData($user),
+        ], 201);
     }
 
     private static function profilePhotoUrl(?string $path): ?string
@@ -104,6 +119,57 @@ class AdminUserController extends Controller
             'message' => 'User retrieved.',
             'data'    => $data,
         ], 200);
+    }
+
+    public function update(UpdateAdminUserRequest $request, int|string $id): JsonResponse
+    {
+        try {
+            $user = $this->adminService->updateUser($id, $request->validated(), $request->user());
+        } catch (BusinessRuleException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'User updated.',
+            'data' => self::userData($user),
+        ]);
+    }
+
+    public function destroy(Request $request, int|string $id): JsonResponse
+    {
+        try {
+            $this->adminService->deleteUser($id, $request->user());
+        } catch (BusinessRuleException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'User deleted.',
+        ]);
+    }
+
+    private static function userData(\App\Models\User $user): array
+    {
+        return [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'role' => $user->role,
+            'mobile_number' => $user->mobile_number,
+            'barangay_id' => $user->barangay_id,
+            'barangay' => $user->barangay?->name,
+            'is_active' => $user->is_active,
+            'created_at' => $user->created_at?->toIso8601String(),
+            'updated_at' => $user->updated_at?->toIso8601String(),
+        ];
     }
 
     /**

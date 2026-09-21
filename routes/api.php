@@ -217,8 +217,11 @@ Route::middleware(['auth:sanctum', 'active', 'admin'])->prefix('admin')->group(f
     Route::post('verifications/{workerProfileId}/review', [AdminVerificationController::class, 'review']);
 
     // User management
+    Route::post('users', [AdminUserController::class, 'store']);
     Route::get('users', [AdminUserController::class, 'index']);
     Route::get('users/{id}', [AdminUserController::class, 'show']);
+    Route::patch('users/{id}', [AdminUserController::class, 'update']);
+    Route::delete('users/{id}', [AdminUserController::class, 'destroy']);
     Route::patch('users/{id}/toggle-active', [AdminUserController::class, 'toggleActive']);  // legacy
     Route::post('users/{id}/toggle-status', [AdminUserController::class, 'toggleStatus']);  // spec §K7
 

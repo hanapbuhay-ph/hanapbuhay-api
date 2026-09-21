@@ -271,6 +271,75 @@ it('admin views a single client user and response has no worker_profile', functi
     expect($response->json('data'))->not->toHaveKey('worker_profile');
 });
 
+it('admin can create a worker user and worker profile', function () use ($makeAdmin) {
+    $admin = $makeAdmin();
+    $barangay = Barangay::factory()->create();
+
+    $response = $this->actingAs($admin)
+        ->postJson('/api/admin/users', [
+            'name' => 'New Worker',
+            'email' => 'new-worker@example.com',
+            'mobile_number' => '09171234567',
+            'password' => 'Password123',
+            'password_confirmation' => 'Password123',
+            'role' => 'worker',
+            'barangay_id' => $barangay->id,
+        ])
+        ->assertStatus(201)
+        ->assertJsonPath('data.email', 'new-worker@example.com')
+        ->assertJsonPath('data.mobile_number', '09171234567');
+
+    $user = User::findOrFail($response->json('data.id'));
+    expect($user->workerProfile)->not->toBeNull();
+    expect($user->email_verified_at)->not->toBeNull();
+    expect($user->mobile_number)->toBe('09171234567');
+});
+
+it('requires a barangay when admin creates a user', function () use ($makeAdmin) {
+    $admin = $makeAdmin();
+
+    $this->actingAs($admin)
+        ->postJson('/api/admin/users', [
+            'name' => 'Missing Barangay',
+            'email' => 'missing-barangay@example.com',
+            'password' => 'Password123',
+            'password_confirmation' => 'Password123',
+            'role' => 'client',
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['barangay_id']);
+});
+
+it('admin can update and soft-delete a user', function () use ($makeAdmin) {
+    $admin = $makeAdmin();
+    $user = User::factory()->create(['role' => 'client']);
+
+    $this->actingAs($admin)
+        ->patchJson("/api/admin/users/{$user->id}", [
+            'name' => 'Updated User',
+            'is_active' => false,
+        ])
+        ->assertStatus(200)
+        ->assertJsonPath('data.name', 'Updated User');
+
+    $this->actingAs($admin)
+        ->deleteJson("/api/admin/users/{$user->id}")
+        ->assertStatus(200)
+        ->assertJsonPath('success', true);
+
+    expect(User::withTrashed()->find($user->id))->not->toBeNull();
+    expect(User::find($user->id))->toBeNull();
+});
+
+it('admin cannot delete their own account', function () use ($makeAdmin) {
+    $admin = $makeAdmin();
+
+    $this->actingAs($admin)
+        ->deleteJson("/api/admin/users/{$admin->id}")
+        ->assertStatus(422)
+        ->assertJsonPath('message', 'You cannot delete your own account.');
+});
+
 it('admin toggles a user inactive', function () use ($makeAdmin) {
     $admin  = $makeAdmin();
     $client = User::factory()->create(['role' => 'client', 'is_active' => true]);

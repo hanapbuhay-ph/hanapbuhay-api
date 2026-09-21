@@ -204,6 +204,76 @@ class AdminService
         return $user;
     }
 
+    public function createUser(array $attributes, User $admin): User
+    {
+        $user = DB::transaction(function () use ($attributes): User {
+            $user = User::create([
+                'name' => $attributes['name'],
+                'email' => $attributes['email'],
+                'password' => $attributes['password'],
+                'mobile_number' => $attributes['mobile_number'] ?? null,
+                'role' => $attributes['role'],
+                'barangay_id' => $attributes['barangay_id'] ?? null,
+                'is_active' => $attributes['is_active'] ?? true,
+                'email_verified_at' => now(),
+            ]);
+
+            if ($user->role === 'worker') {
+                WorkerProfile::create([
+                    'user_id' => $user->id,
+                    'availability_status' => 'available',
+                ]);
+            }
+
+            return $user;
+        });
+
+        $this->audit($admin, 'create_user', 'User', $user->id);
+
+        return $user->load('barangay:id,name');
+    }
+
+    public function updateUser(int|string $userId, array $attributes, User $admin): User
+    {
+        if ((int) $userId === $admin->id && array_key_exists('is_active', $attributes) && ! $attributes['is_active']) {
+            throw new \App\Exceptions\BusinessRuleException('You cannot deactivate your own account.');
+        }
+
+        $user = User::findOrFail($userId);
+        $role = $attributes['role'] ?? $user->role;
+        $updateData = collect($attributes)->except('password')->all();
+
+        if (!empty($attributes['password'])) {
+            $updateData['password'] = $attributes['password'];
+        }
+
+        DB::transaction(function () use ($user, $updateData, $role): void {
+            $user->update($updateData);
+
+            if ($role === 'worker' && ! $user->workerProfile()->exists()) {
+                WorkerProfile::create([
+                    'user_id' => $user->id,
+                    'availability_status' => 'available',
+                ]);
+            }
+        });
+
+        $this->audit($admin, 'update_user', 'User', $user->id);
+
+        return $user->fresh()->load('barangay:id,name');
+    }
+
+    public function deleteUser(int|string $userId, User $admin): void
+    {
+        if ((int) $userId === $admin->id) {
+            throw new \App\Exceptions\BusinessRuleException('You cannot delete your own account.');
+        }
+
+        $user = User::findOrFail($userId);
+        $user->delete();
+        $this->audit($admin, 'delete_user', 'User', $user->id);
+    }
+
     /**
      * Toggle is_active for a user. Admin may not deactivate themselves.
      *
