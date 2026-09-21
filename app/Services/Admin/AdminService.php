@@ -776,6 +776,16 @@ class AdminService
         return $query->paginate(25);
     }
 
+    public function deleteAuditLog(int|string $id): void
+    {
+        AdminAuditLog::findOrFail($id)->delete();
+    }
+
+    public function deleteAllAuditLogs(): void
+    {
+        AdminAuditLog::query()->delete();
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     // SECTION 10 — PLATFORM SETTINGS (SERVICE CATEGORIES)
     // ──────────────────────────────────────────────────────────────────────────

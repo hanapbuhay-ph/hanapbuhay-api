@@ -311,6 +311,20 @@ it('admin can filter audit logs by admin_id', function () {
     expect($response->json('data.pagination.total'))->toBe(2);
 });
 
+it('admin can delete all audit logs', function () {
+    $admin = makeAdmin();
+
+    AdminAuditLog::factory()->count(3)->create(['admin_id' => $admin->id]);
+
+    $this->actingAs($admin)
+        ->deleteJson('/api/admin/audit-logs')
+        ->assertStatus(200)
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('message', 'All audit logs deleted.');
+
+    expect(AdminAuditLog::count())->toBe(0);
+});
+
 it('returns empty logs when none exist', function () {
     $admin = makeAdmin();
 

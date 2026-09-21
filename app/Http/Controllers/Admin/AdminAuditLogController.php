@@ -50,4 +50,30 @@ class AdminAuditLogController extends Controller
             ],
         ]);
     }
+
+    /**
+     * DELETE /api/admin/audit-logs/{id}
+     */
+    public function destroy(int|string $id): JsonResponse
+    {
+        $this->adminService->deleteAuditLog($id);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Audit log deleted.',
+        ]);
+    }
+
+    /**
+     * DELETE /api/admin/audit-logs
+     */
+    public function destroyAll(): JsonResponse
+    {
+        $this->adminService->deleteAllAuditLogs();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'All audit logs deleted.',
+        ]);
+    }
 }
