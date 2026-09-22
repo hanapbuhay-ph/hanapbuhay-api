@@ -922,7 +922,10 @@ class AdminService
      */
     public function getSettings(): array
     {
-        $activeAnnouncement = \App\Models\Announcement::active()
+        $activeAnnouncement = \App\Models\Announcement::query()
+            ->where('status', 'published')
+            ->where('is_active', true)
+            ->active()
             ->latest()
             ->first();
 
@@ -950,6 +953,90 @@ class AdminService
         ];
     }
 
+    public function listAnnouncements(): \Illuminate\Database\Eloquent\Collection
+    {
+        return \App\Models\Announcement::query()
+            ->orderByDesc('created_at')
+            ->get([
+                'id',
+                'posted_by',
+                'title',
+                'body',
+                'status',
+                'target_audience',
+                'expires_at',
+                'is_active',
+                'created_at',
+                'updated_at',
+            ]);
+    }
+
+    public function createAnnouncement(User $admin, array $attributes): \App\Models\Announcement
+    {
+        $announcement = \App\Models\Announcement::create([
+            'posted_by' => $admin->id,
+            'title' => $attributes['title'],
+            'body' => $attributes['body'],
+            'status' => $attributes['status'] ?? 'draft',
+            'target_audience' => $attributes['target_audience'] ?? 'all',
+            'expires_at' => $attributes['expires_at'] ?? null,
+            'is_active' => ($attributes['status'] ?? 'draft') !== 'archived',
+        ]);
+
+        $this->audit($admin, 'create_announcement', 'Announcement', $announcement->id, [
+            'title' => $announcement->title,
+            'status' => $announcement->status,
+            'target_audience' => $announcement->target_audience,
+        ]);
+
+        if ($announcement->status === 'published') {
+            User::where('is_active', true)
+                ->whereNotNull('email_verified_at')
+                ->whereNull('deleted_at')
+                ->chunk(200, function ($users) use ($announcement): void {
+                    foreach ($users as $user) {
+                        $this->notificationService->notify(
+                            $user,
+                            $announcement->title,
+                            $announcement->body,
+                            'system_announcement',
+                        );
+                    }
+                });
+        }
+
+        return $announcement;
+    }
+
+    public function updateAnnouncement(User $admin, int|string $announcementId, array $attributes): \App\Models\Announcement
+    {
+        $announcement = \App\Models\Announcement::findOrFail($announcementId);
+        $announcement->fill($attributes);
+
+        if (isset($attributes['status'])) {
+            $announcement->is_active = $attributes['status'] !== 'archived';
+        }
+
+        $announcement->save();
+
+        $this->audit($admin, 'update_announcement', 'Announcement', $announcement->id, [
+            'title' => $announcement->title,
+            'status' => $announcement->status,
+        ]);
+
+        return $announcement->fresh();
+    }
+
+    public function deleteAnnouncement(User $admin, int|string $announcementId): void
+    {
+        $announcement = \App\Models\Announcement::findOrFail($announcementId);
+        $announcement->delete();
+
+        $this->audit($admin, 'delete_announcement', 'Announcement', (int) $announcementId, [
+            'title' => $announcement->title,
+        ]);
+    }
+
     /**
      * POST /admin/settings with action=post_announcement — publish a system-wide announcement.
      * Also creates in-app notifications for all active users.
@@ -960,6 +1047,8 @@ class AdminService
             'posted_by'  => $admin->id,
             'title'      => $title,
             'body'       => $body,
+            'status'     => 'published',
+            'target_audience' => 'all',
             'expires_at' => $expiresAt,
             'is_active'  => true,
         ]);

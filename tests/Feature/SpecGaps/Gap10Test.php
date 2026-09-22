@@ -218,6 +218,42 @@ it('returns 422 when action field is missing on POST /admin/settings', function 
         ->assertJsonValidationErrors(['action']);
 });
 
+it('admin can list, create, update, and delete announcements through CRUD endpoints', function () {
+    $admin = makeSettingsAdmin();
+
+    $create = $this->actingAs($admin)
+        ->postJson('/api/admin/settings/announcements', [
+            'title' => 'Maintenance Window',
+            'body' => 'We will be offline at 2am.',
+            'status' => 'draft',
+            'target_audience' => 'clients',
+            'expires_at' => now()->addDays(7)->toDateString(),
+        ])
+        ->assertStatus(201);
+
+    $announcementId = $create->json('data.id');
+
+    $this->actingAs($admin)
+        ->getJson('/api/admin/settings/announcements')
+        ->assertStatus(200)
+        ->assertJsonPath('data.0.id', $announcementId);
+
+    $this->actingAs($admin)
+        ->patchJson("/api/admin/settings/announcements/{$announcementId}", [
+            'title' => 'Maintenance Updated',
+            'status' => 'published',
+        ])
+        ->assertStatus(200)
+        ->assertJsonPath('data.title', 'Maintenance Updated');
+
+    $this->actingAs($admin)
+        ->deleteJson("/api/admin/settings/announcements/{$announcementId}")
+        ->assertStatus(200)
+        ->assertJsonPath('message', 'Announcement deleted.');
+
+    expect(Announcement::count())->toBe(0);
+});
+
 it('returns 403 for non-admin on POST /admin/settings', function () {
     $client = makeBookingClient();
 

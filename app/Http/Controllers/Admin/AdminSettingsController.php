@@ -84,6 +84,65 @@ class AdminSettingsController extends Controller
         ]);
     }
 
+    public function listAnnouncements(): JsonResponse
+    {
+        $announcements = $this->adminService->listAnnouncements();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Announcements retrieved.',
+            'data' => $announcements,
+        ]);
+    }
+
+    public function createAnnouncement(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:200'],
+            'body' => ['required', 'string', 'max:1000'],
+            'status' => ['sometimes', 'in:draft,published,archived'],
+            'target_audience' => ['sometimes', 'in:all,clients,workers'],
+            'expires_at' => ['nullable', 'date', 'after:today'],
+        ]);
+
+        $announcement = $this->adminService->createAnnouncement($request->user(), $validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Announcement created.',
+            'data' => $announcement,
+        ], 201);
+    }
+
+    public function updateAnnouncement(Request $request, int|string $announcementId): JsonResponse
+    {
+        $validated = $request->validate([
+            'title' => ['sometimes', 'string', 'max:200'],
+            'body' => ['sometimes', 'string', 'max:1000'],
+            'status' => ['sometimes', 'in:draft,published,archived'],
+            'target_audience' => ['sometimes', 'in:all,clients,workers'],
+            'expires_at' => ['nullable', 'date', 'after:today'],
+        ]);
+
+        $announcement = $this->adminService->updateAnnouncement($request->user(), $announcementId, $validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Announcement updated.',
+            'data' => $announcement,
+        ]);
+    }
+
+    public function deleteAnnouncement(Request $request, int|string $announcementId): JsonResponse
+    {
+        $this->adminService->deleteAnnouncement($request->user(), $announcementId);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Announcement deleted.',
+        ]);
+    }
+
     // ── Sub-resource routes (existing) ────────────────────────────────────────
 
     /**

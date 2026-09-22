@@ -259,6 +259,10 @@ Route::middleware(['auth:sanctum', 'active', 'admin'])->prefix('admin')->group(f
     // Platform settings
     Route::get('settings', [AdminSettingsController::class, 'index']);        // spec §K17
     Route::post('settings', [AdminSettingsController::class, 'store']);        // spec §K17
+    Route::get('settings/announcements', [AdminSettingsController::class, 'listAnnouncements']);
+    Route::post('settings/announcements', [AdminSettingsController::class, 'createAnnouncement']);
+    Route::patch('settings/announcements/{announcementId}', [AdminSettingsController::class, 'updateAnnouncement']);
+    Route::delete('settings/announcements/{announcementId}', [AdminSettingsController::class, 'deleteAnnouncement']);
     Route::get('settings/categories', [AdminSettingsController::class, 'listCategories']);
     Route::post('settings/categories', [AdminSettingsController::class, 'createCategory']);
     Route::patch('settings/categories/{categoryId}', [AdminSettingsController::class, 'updateCategory']);
