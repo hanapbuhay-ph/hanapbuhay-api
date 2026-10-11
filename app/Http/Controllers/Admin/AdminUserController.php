@@ -101,6 +101,8 @@ class AdminUserController extends Controller
             'profile_photo_path'=> $user->profile_photo_path,
             'barangay_id'       => $user->barangay_id,
             'barangay'          => $user->barangay?->name,
+            'worker_profile_id' => $user->workerProfile?->id,
+            'profile_photo_url' => self::profilePhotoUrl($user->profile_photo_path),
             'is_active'         => $user->is_active,
             'is_google_account' => $user->is_google_account,
             'email_verified_at' => $user->email_verified_at?->toIso8601String(),

@@ -1196,36 +1196,115 @@ class AdminService
             ->findOrFail($postId);
     }
 
+    public function createJobPost(User $admin, array $data): JobPost
+    {
+        $profile = WorkerProfile::with('user')->findOrFail($data['worker_profile_id']);
+        $profile->jobPosts()
+            ->where('service_category_id', $data['service_category_id'])
+            ->get()
+            ->each(fn (JobPost $existingPost) => $existingPost->delete());
+
+        $post = $profile->jobPosts()->create([
+            'service_category_id' => $data['service_category_id'],
+            'title' => $data['title'],
+            'description' => $data['description'],
+            'rate_amount' => $data['rate_amount'],
+            'rate_type' => $data['rate_type'],
+            'is_available' => $data['is_available'],
+            'is_active' => $data['is_active'] ?? true,
+        ]);
+        $profile->serviceCategories()->syncWithoutDetaching([$data['service_category_id']]);
+
+        $this->audit($admin, 'create_job_post', 'JobPost', $post->id, [
+            'worker_profile_id' => $profile->id,
+            'title' => $post->title,
+        ]);
+        $this->notifyWorkerOfJobPostChange($profile->user, $post, 'created');
+
+        return $post;
+    }
+
+    public function updateJobPost(User $admin, int $postId, array $data): JobPost
+    {
+        $post = JobPost::withTrashed()->with('workerProfile.user')->findOrFail($postId);
+        $previousCategoryId = $post->service_category_id;
+        $post->update([
+            'service_category_id' => $data['service_category_id'],
+            'title' => $data['title'],
+            'description' => $data['description'],
+            'rate_amount' => $data['rate_amount'],
+            'rate_type' => $data['rate_type'],
+            'is_available' => $data['is_available'],
+            'is_active' => $data['is_active'] ?? $post->is_active,
+        ]);
+
+        if ((int) $previousCategoryId !== (int) $data['service_category_id']) {
+            $post->workerProfile->serviceCategories()->syncWithoutDetaching([$data['service_category_id']]);
+        }
+
+        $this->audit($admin, 'update_job_post', 'JobPost', $post->id, [
+            'worker_profile_id' => $post->worker_profile_id,
+            'title' => $post->title,
+        ]);
+        $this->notifyWorkerOfJobPostChange($post->workerProfile->user, $post, 'updated');
+
+        return $post->fresh(['serviceCategory', 'images']);
+    }
+
+    private function notifyWorkerOfJobPostChange(User $worker, JobPost $post, string $action): void
+    {
+        $title = $action === 'created' ? 'A job post was added' : 'Job post updated';
+        $body = $action === 'created'
+            ? "An administrator added a job post to your profile: {$post->title}."
+            : "An administrator updated your job post: {$post->title}.";
+        $data = ['job_post_id' => (string) $post->id];
+
+        $this->notificationService->notify($worker, $title, $body, "job_post_{$action}", $data);
+        $this->notificationService->sendPush($worker, $title, $body, [
+            'type' => "job_post_{$action}",
+            ...$data,
+        ]);
+    }
+
     /**
      * Force-delete (hard delete) a job post as admin.
      */
     public function forceDeleteJobPost(User $admin, int $postId, string $reason): void
     {
-        $post = JobPost::withTrashed()->findOrFail($postId);
+        $this->forceDeleteJobPosts($admin, [$postId], $reason);
+    }
 
-        $this->audit($admin, 'delete_job_post', 'JobPost', $post->id, [
-            'title'             => $post->title,
-            'worker_profile_id' => $post->worker_profile_id,
-            'reason'            => $reason,
-        ]);
+    public function forceDeleteJobPosts(User $admin, array $postIds, string $reason): void
+    {
+        $posts = JobPost::withTrashed()
+            ->with('workerProfile.user')
+            ->whereIn('id', $postIds)
+            ->get();
 
-        $post->load('workerProfile.user');
-        if ($post->workerProfile?->user) {
-            $this->notificationService->notify(
-                $post->workerProfile->user,
-                'Job post removed',
-                $reason,
-                'job_post_removed',
-                ['job_post_id' => $post->id],
-            );
-            $this->notificationService->sendPush(
-                $post->workerProfile->user,
-                'Job post removed',
-                $reason,
-                ['type' => 'job_post_removed', 'job_post_id' => (string) $post->id],
-            );
+        foreach ($posts as $post) {
+            $this->audit($admin, 'delete_job_post', 'JobPost', $post->id, [
+                'title'             => $post->title,
+                'worker_profile_id' => $post->worker_profile_id,
+                'reason'            => $reason,
+            ]);
+
+            if ($post->workerProfile?->user) {
+                $this->notificationService->notify(
+                    $post->workerProfile->user,
+                    'Job post removed',
+                    $reason,
+                    'job_post_removed',
+                    ['job_post_id' => $post->id],
+                );
+                $this->notificationService->sendPush(
+                    $post->workerProfile->user,
+                    'Job post removed',
+                    $reason,
+                    ['type' => 'job_post_removed', 'job_post_id' => (string) $post->id],
+                );
+            }
+
+            $post->forceDelete();
         }
-
-        $post->forceDelete();
     }
 }

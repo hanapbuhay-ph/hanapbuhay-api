@@ -273,8 +273,13 @@ Route::middleware(['auth:sanctum', 'active', 'admin'])->prefix('admin')->group(f
     Route::delete('settings/report-reasons/{reportReasonId}', [AdminSettingsController::class, 'deleteReportReason']);
 
     // Job post oversight
+    Route::post('posts', [AdminJobPostController::class, 'store']);
     Route::get('posts', [AdminJobPostController::class, 'index']);
     Route::get('posts/{id}', [AdminJobPostController::class, 'show']);
+    Route::put('posts/{id}', [AdminJobPostController::class, 'update']);
+    Route::post('posts/{id}/images', [AdminJobPostController::class, 'uploadImages']);
+    Route::delete('posts/{id}/images/{imageId}', [AdminJobPostController::class, 'deleteImage']);
+    Route::delete('posts/bulk', [AdminJobPostController::class, 'bulkDestroy']);
     Route::delete('posts/{id}', [AdminJobPostController::class, 'destroy']);
 
     // Account deletion queue

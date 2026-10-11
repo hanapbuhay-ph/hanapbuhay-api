@@ -3,14 +3,84 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\BulkDeleteJobPostsRequest;
 use App\Http\Requests\Admin\DeleteJobPostRequest;
+use App\Http\Requests\Admin\StoreAdminJobPostRequest;
+use App\Http\Requests\Admin\UpdateAdminJobPostRequest;
+use App\Http\Requests\JobPost\UploadJobPostImagesRequest;
+use App\Models\JobPost;
+use App\Models\JobPostImage;
 use App\Services\Admin\AdminService;
+use App\Services\JobPost\JobPostImageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AdminJobPostController extends Controller
 {
-    public function __construct(private readonly AdminService $adminService) {}
+    public function __construct(
+        private readonly AdminService $adminService,
+        private readonly JobPostImageService $imageService,
+    ) {}
+
+    public function store(StoreAdminJobPostRequest $request): JsonResponse
+    {
+        $post = $this->adminService->createJobPost(
+            $request->user(),
+            $request->validated(),
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Job post created.',
+            'data' => ['job_post' => $post->load(['serviceCategory', 'images'])],
+        ], 201);
+    }
+
+    public function update(UpdateAdminJobPostRequest $request, int|string $id): JsonResponse
+    {
+        $post = $this->adminService->updateJobPost(
+            $request->user(),
+            (int) $id,
+            $request->validated(),
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Job post updated.',
+            'data' => ['job_post' => $post->load(['serviceCategory', 'images'])],
+        ]);
+    }
+
+    public function uploadImages(UploadJobPostImagesRequest $request, int $id): JsonResponse
+    {
+        $post = JobPost::withTrashed()->findOrFail($id);
+        $existing = $post->images()->count();
+        $incoming = count($request->file('images', []));
+
+        if ($existing + $incoming > JobPostImageService::MAX_IMAGES) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A post may have at most '.JobPostImageService::MAX_IMAGES.' images.',
+            ], 422);
+        }
+
+        $this->imageService->upload($post, $request->file('images'));
+        $post->load('images');
+
+        return response()->json([
+            'success' => true,
+            'data' => ['images' => $this->imageService->formatImages($post->images)],
+        ], 201);
+    }
+
+    public function deleteImage(int $id, int $imageId): JsonResponse
+    {
+        $post = JobPost::withTrashed()->findOrFail($id);
+        $image = $post->images()->whereKey($imageId)->firstOrFail();
+        $this->imageService->delete($image);
+
+        return response()->json(['success' => true, 'message' => 'Image deleted.']);
+    }
 
     /**
      * GET /api/admin/posts
@@ -124,6 +194,22 @@ class AdminJobPostController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Job post permanently deleted.',
+        ]);
+    }
+
+    public function bulkDestroy(BulkDeleteJobPostsRequest $request): JsonResponse
+    {
+        $postIds = $request->validated('post_ids');
+        $this->adminService->forceDeleteJobPosts(
+            $request->user(),
+            $postIds,
+            $request->validated('reason'),
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => count($postIds).' job posts permanently deleted.',
+            'data' => ['deleted_ids' => $postIds],
         ]);
     }
 }
