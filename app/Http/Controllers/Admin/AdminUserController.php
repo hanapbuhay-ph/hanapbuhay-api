@@ -28,6 +28,7 @@ class AdminUserController extends Controller
             $request->query('is_active') ?? $request->query('status'), // support both param names
             $request->query('search'),
             $request->filled('barangay') ? $request->integer('barangay') : null,
+            $request->query('verification'),
         );
 
         $users = collect($paginated->items())->map(function ($user): array {
@@ -39,6 +40,7 @@ class AdminUserController extends Controller
                 'role'       => $user->role,
                 'barangay_id'=> $user->barangay_id,
                 'barangay'   => $user->barangay?->name,
+                'worker_profile_id' => $user->workerProfile?->id,
                 'profile_photo_url' => self::profilePhotoUrl($user->profile_photo_path),
                 'is_active'  => $user->is_active,
                 'created_at' => $user->created_at?->toIso8601String(),

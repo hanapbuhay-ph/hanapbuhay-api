@@ -2,6 +2,7 @@
 
 namespace App\Services\Admin;
 
+use App\Events\AdminEntityChanged;
 use App\Models\AdminAuditLog;
 use App\Models\Booking;
 use App\Models\JobPost;
@@ -153,10 +154,19 @@ class AdminService
     /**
      * List all users with optional filters for role, is_active, barangay, and search.
      */
-    public function listUsers(?string $role, ?string $isActive, ?string $search, ?int $barangayId = null): LengthAwarePaginator
+    public function listUsers(
+        ?string $role,
+        ?string $isActive,
+        ?string $search,
+        ?int $barangayId = null,
+        ?string $verification = null,
+    ): LengthAwarePaginator
     {
         $query = User::query()
-            ->with('barangay:id,name')
+            ->with([
+                'barangay:id,name',
+                'workerProfile:id,user_id',
+            ])
             ->orderByDesc('created_at');
 
         if ($role !== null) {
@@ -176,6 +186,20 @@ class AdminService
 
         if ($barangayId !== null) {
             $query->where('barangay_id', $barangayId);
+        }
+
+        if ($verification === 'verified') {
+            $query->whereHas('workerProfile', fn ($profileQuery) =>
+                $profileQuery->where('verification_status', 'approved')
+            );
+        } elseif ($verification === 'unverified') {
+            $query->where(function ($verificationQuery): void {
+                $verificationQuery
+                    ->whereDoesntHave('workerProfile')
+                    ->orWhereHas('workerProfile', fn ($profileQuery) =>
+                        $profileQuery->where('verification_status', '!=', 'approved')
+                    );
+            });
         }
 
         if ($search !== null) {
@@ -229,6 +253,11 @@ class AdminService
         });
 
         $this->audit($admin, 'create_user', 'User', $user->id);
+        event(new AdminEntityChanged('user', 'created', (int) $user->id, [
+            'name' => $user->name,
+            'email' => $user->email,
+            'role' => $user->role,
+        ]));
 
         return $user->load('barangay:id,name');
     }
@@ -259,6 +288,11 @@ class AdminService
         });
 
         $this->audit($admin, 'update_user', 'User', $user->id);
+        event(new AdminEntityChanged('user', 'updated', (int) $user->id, [
+            'name' => $user->name->toString(),
+            'email' => $user->email,
+            'role' => $user->role,
+        ]));
 
         return $user->fresh()->load('barangay:id,name');
     }
@@ -270,8 +304,13 @@ class AdminService
         }
 
         $user = User::findOrFail($userId);
+        $userIdForEvent = (int) $user->id;
         $user->delete();
-        $this->audit($admin, 'delete_user', 'User', $user->id);
+        $this->audit($admin, 'delete_user', 'User', $userIdForEvent);
+        event(new AdminEntityChanged('user', 'deleted', $userIdForEvent, [
+            'email' => $user->email,
+            'role' => $user->role,
+        ]));
     }
 
     /**
