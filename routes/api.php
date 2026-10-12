@@ -252,6 +252,7 @@ Route::middleware(['auth:sanctum', 'active', 'admin'])->prefix('admin')->group(f
 
     // Chat log oversight
     Route::get('chat-logs', [AdminChatLogController::class, 'index']);
+    Route::get('chat-logs/conversations/{clientId}/{workerId}', [AdminChatLogController::class, 'showConversation']);
     Route::get('chat-logs/{bookingId}', [AdminChatLogController::class, 'show']);
 
     // Audit logs

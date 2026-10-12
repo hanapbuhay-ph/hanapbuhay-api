@@ -1943,6 +1943,26 @@ Side Effects:
   WebSocket broadcast to receiver:
   Channel: private-booking.{bookingId}
   Event: NewMessage
+```
+
+---
+
+### I4. Admin Chat Logs by Participants
+```
+GET /api/admin/chat-logs
+(Admin only)
+
+Returns one conversation per unique client-worker pair, combining messages
+across their bookings. Supports optional `search` by either participant's
+name or email and paginates the conversation list.
+
+GET /api/admin/chat-logs/conversations/{clientId}/{workerId}
+(Admin only)
+
+Returns the selected pair's combined, chronological message history. Each
+message includes its booking code. This read-only endpoint does not mark
+messages as read. The legacy GET /api/admin/chat-logs/{bookingId} route remains
+available for booking-specific history.
   Push notification to receiver:
   "New message from [sender name]"
 ```
