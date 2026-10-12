@@ -243,6 +243,7 @@ Route::middleware(['auth:sanctum', 'active', 'admin'])->prefix('admin')->group(f
     Route::post('workers/{workerProfileId}/trust-tier', [AdminWorkerController::class, 'updateTrustTier']);
 
     // Ratings oversight
+    Route::get('ratings/users', [AdminRatingController::class, 'users']);
     Route::get('ratings', [AdminRatingController::class, 'index']);
     Route::delete('ratings/{id}', [AdminRatingController::class, 'destroy']);
 

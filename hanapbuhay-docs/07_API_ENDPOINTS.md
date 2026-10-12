@@ -2572,6 +2572,9 @@ GET /api/admin/ratings
 (Admin only)
 
 Query Parameters:
+  rated_user_id: integer, optional (filter by the user receiving reviews)
+  worker_id: integer, optional (legacy worker recipient filter)
+  client_id: integer, optional (legacy reviewer filter)
   score:     integer (1-5), optional
   direction: string (client_to_worker/
              worker_to_client), optional
@@ -2585,18 +2588,40 @@ Response 200:
         "ratings": [
             {
                 "id": 1,
-                "rated_by_name": "Ana Cruz",
-                "rated_user_name":
-                    "Pedro Alonzo",
-                "booking_code":
-                    "HB-2026-00001",
+                "rated_by": { "id": 2, "name": "Ana Cruz" },
+                "rated_user": { "id": 3, "name": "Pedro Alonzo" },
+                "booking": { "id": 1, "booking_code": "HB-2026-00001" },
                 "score": 5,
                 "comment": "Very professional!",
                 "created_at": "..."
             }
-        ]
+        ],
+        "pagination": {
+            "current_page": 1,
+            "per_page": 15,
+            "total": 1,
+            "last_page": 1
+        }
     }
 }
+```
+
+---
+
+### K14a. List Review Recipients (Admin)
+```
+GET /api/admin/ratings/users
+(Admin only)
+
+Query Parameters:
+  role:   client or worker, optional
+  search: matches user name or email, optional
+  page:   integer, optional
+  sort_by: name or average_rating, optional (default: average_rating)
+  sort_direction: asc or desc, optional (default: desc)
+
+Returns paginated users except admins, including users with no reviews. Users
+without reviews have a review count of 0 and an average rating of 0.
 ```
 
 ---

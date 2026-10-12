@@ -2,6 +2,7 @@
 
 use App\Models\AdminAuditLog;
 use App\Models\Booking;
+use App\Models\HanapbuhayNotification;
 use App\Models\JobPost;
 use App\Models\RatingReview;
 use App\Models\ServiceCategory;
@@ -63,7 +64,7 @@ it('admin can update a worker trust tier', function () {
 
     $notificationService = $this->mock(NotificationService::class);
     $notificationService->shouldReceive('notify')->once()
-        ->andReturnUsing(fn () => new \App\Models\HanapbuhayNotification());
+        ->andReturnUsing(fn () => new HanapbuhayNotification);
     $notificationService->shouldReceive('sendPush')->once();
 
     $this->actingAs($admin)
@@ -86,7 +87,7 @@ it('audit log is written when trust tier is updated', function () {
 
     $notificationService = $this->mock(NotificationService::class);
     $notificationService->shouldReceive('notify')->once()
-        ->andReturnUsing(fn () => new \App\Models\HanapbuhayNotification());
+        ->andReturnUsing(fn () => new HanapbuhayNotification);
     $notificationService->shouldReceive('sendPush')->once();
 
     $this->actingAs($admin)
@@ -232,6 +233,100 @@ it('admin can filter ratings by worker_id', function () {
 
     expect($response->json('data.pagination.total'))->toBe(1);
     expect($response->json('data.ratings.0.rated_user.id'))->toBe($worker1->id);
+});
+
+it('admin can list review recipients with review counts and average ratings', function () {
+    $admin = makeAdmin();
+    $worker = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $clientWithoutReviews = makeBookingClient();
+    $workerRating = makeRating($worker, $client);
+
+    RatingReview::create([
+        'booking_id' => $workerRating->booking_id,
+        'rated_by' => $worker->id,
+        'rated_user' => $client->id,
+        'score' => 5,
+        'comment' => 'Great client',
+    ]);
+
+    $response = $this->actingAs($admin)
+        ->getJson('/api/admin/ratings/users')
+        ->assertOk()
+        ->assertJsonPath('success', true)
+        ->assertJsonStructure([
+            'data' => [
+                'users' => [[
+                    'id', 'name', 'email', 'role', 'barangay', 'is_active',
+                    'reviews_received_count', 'average_rating',
+                ]],
+                'pagination' => ['current_page', 'per_page', 'total', 'last_page'],
+            ],
+        ]);
+
+    $recipients = collect($response->json('data.users'))->keyBy('id');
+    expect($recipients[$worker->id]['role'])->toBe('worker')
+        ->and($recipients[$worker->id]['reviews_received_count'])->toBe(1)
+        ->and($recipients[$worker->id]['average_rating'])->toBe(4)
+        ->and($recipients[$client->id]['role'])->toBe('client')
+        ->and($recipients[$client->id]['reviews_received_count'])->toBe(1)
+        ->and($recipients[$client->id]['average_rating'])->toBe(5)
+        ->and($recipients[$clientWithoutReviews->id]['reviews_received_count'])->toBe(0)
+        ->and($recipients[$clientWithoutReviews->id]['average_rating'])->toBe(0)
+        ->and($recipients->has($admin->id))->toBeFalse();
+
+    $this->actingAs($admin)
+        ->getJson('/api/admin/ratings/users?role=worker&search='.urlencode($worker->name))
+        ->assertOk()
+        ->assertJsonPath('data.pagination.total', 1)
+        ->assertJsonPath('data.users.0.id', $worker->id);
+
+    $this->actingAs($admin)
+        ->getJson('/api/admin/ratings/users?sort_by=name&sort_direction=asc')
+        ->assertOk()
+        ->assertJsonPath('data.users.0.name', collect($recipients)->pluck('name')->sort()->first());
+
+    $this->actingAs($admin)
+        ->getJson('/api/admin/ratings/users?sort_by=average_rating&sort_direction=asc')
+        ->assertOk()
+        ->assertJsonPath('data.users.0.id', $clientWithoutReviews->id);
+
+    $this->actingAs($admin)
+        ->getJson('/api/admin/ratings/users?sort_by=average_rating&sort_direction=desc')
+        ->assertOk()
+        ->assertJsonPath('data.users.0.id', $client->id);
+
+    $this->actingAs($admin)
+        ->getJson('/api/admin/ratings/users?sort_by=email')
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['sort_by']);
+});
+
+it('admin can filter ratings by rated_user_id for clients and workers', function () {
+    $admin = makeAdmin();
+    $worker = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $workerRating = makeRating($worker, $client);
+
+    RatingReview::create([
+        'booking_id' => $workerRating->booking_id,
+        'rated_by' => $worker->id,
+        'rated_user' => $client->id,
+        'score' => 5,
+        'comment' => 'Great client',
+    ]);
+
+    $this->actingAs($admin)
+        ->getJson("/api/admin/ratings?rated_user_id={$client->id}")
+        ->assertOk()
+        ->assertJsonPath('data.pagination.total', 1)
+        ->assertJsonPath('data.ratings.0.rated_user.id', $client->id);
+
+    $this->actingAs($admin)
+        ->getJson("/api/admin/ratings?rated_user_id={$worker->id}")
+        ->assertOk()
+        ->assertJsonPath('data.pagination.total', 1)
+        ->assertJsonPath('data.ratings.0.rated_user.id', $worker->id);
 });
 
 it('admin can delete a rating and worker average is recalculated', function () {

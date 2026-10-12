@@ -3,8 +3,6 @@
 namespace App\Models;
 
 use Database\Factories\UserFactory;
-use Laravel\Sanctum\HasApiTokens;
-use App\Models\WorkerProfile;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -12,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
@@ -76,6 +75,11 @@ class User extends Authenticatable
     public function workerBookings(): HasMany
     {
         return $this->hasMany(Booking::class, 'worker_id');
+    }
+
+    public function receivedRatings(): HasMany
+    {
+        return $this->hasMany(RatingReview::class, 'rated_user');
     }
 
     public function sentMessages(): HasMany

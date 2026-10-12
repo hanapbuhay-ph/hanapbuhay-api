@@ -3,7 +3,9 @@
 namespace App\Services\Admin;
 
 use App\Events\AdminEntityChanged;
+use App\Exceptions\BusinessRuleException;
 use App\Models\AdminAuditLog;
+use App\Models\Announcement;
 use App\Models\Booking;
 use App\Models\JobPost;
 use App\Models\RatingReview;
@@ -15,6 +17,7 @@ use App\Models\VerificationHistory;
 use App\Models\WorkerProfile;
 use App\Services\Notification\NotificationService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class AdminService
@@ -160,8 +163,7 @@ class AdminService
         ?string $search,
         ?int $barangayId = null,
         ?string $verification = null,
-    ): LengthAwarePaginator
-    {
+    ): LengthAwarePaginator {
         $query = User::query()
             ->with([
                 'barangay:id,name',
@@ -189,15 +191,13 @@ class AdminService
         }
 
         if ($verification === 'verified') {
-            $query->whereHas('workerProfile', fn ($profileQuery) =>
-                $profileQuery->where('verification_status', 'approved')
+            $query->whereHas('workerProfile', fn ($profileQuery) => $profileQuery->where('verification_status', 'approved')
             );
         } elseif ($verification === 'unverified') {
             $query->where(function ($verificationQuery): void {
                 $verificationQuery
                     ->whereDoesntHave('workerProfile')
-                    ->orWhereHas('workerProfile', fn ($profileQuery) =>
-                        $profileQuery->where('verification_status', '!=', 'approved')
+                    ->orWhereHas('workerProfile', fn ($profileQuery) => $profileQuery->where('verification_status', '!=', 'approved')
                     );
             });
         }
@@ -265,7 +265,7 @@ class AdminService
     public function updateUser(int|string $userId, array $attributes, User $admin): User
     {
         if ((int) $userId === $admin->id && array_key_exists('is_active', $attributes) && ! $attributes['is_active']) {
-            throw new \App\Exceptions\BusinessRuleException('You cannot deactivate your own account.');
+            throw new BusinessRuleException('You cannot deactivate your own account.');
         }
 
         $user = User::findOrFail($userId);
@@ -300,7 +300,7 @@ class AdminService
     public function deleteUser(int|string $userId, User $admin): void
     {
         if ((int) $userId === $admin->id) {
-            throw new \App\Exceptions\BusinessRuleException('You cannot delete your own account.');
+            throw new BusinessRuleException('You cannot delete your own account.');
         }
 
         $user = User::findOrFail($userId);
@@ -316,12 +316,12 @@ class AdminService
     /**
      * Toggle is_active for a user. Admin may not deactivate themselves.
      *
-     * @throws \App\Exceptions\BusinessRuleException
+     * @throws BusinessRuleException
      */
     public function toggleActive(int $userId, int $adminId): User
     {
         if ($userId === $adminId) {
-            throw new \App\Exceptions\BusinessRuleException(
+            throw new BusinessRuleException(
                 'You cannot deactivate your own account.'
             );
         }
@@ -651,7 +651,7 @@ class AdminService
     /**
      * Force-cancel a booking by an admin. Allowed on any non-terminal status.
      *
-     * @throws \App\Exceptions\BusinessRuleException
+     * @throws BusinessRuleException
      */
     public function forceCancelBooking(User $admin, int $bookingId, string $reason): Booking
     {
@@ -660,7 +660,7 @@ class AdminService
         $terminal = ['completed', 'cancelled'];
 
         if (in_array($booking->status, $terminal, true)) {
-            throw new \App\Exceptions\BusinessRuleException(
+            throw new BusinessRuleException(
                 "Booking is already {$booking->status} and cannot be cancelled."
             );
         }
@@ -698,9 +698,9 @@ class AdminService
     // ──────────────────────────────────────────────────────────────────────────
 
     /**
-     * List all ratings with optional filters: worker_id, client_id, score, direction, search.
+     * List all ratings with optional filters: rated_user_id, worker_id, client_id, score, direction, search.
      */
-    public function listRatings(?int $workerId, ?int $clientId, ?int $score = null, ?string $direction = null, ?string $search = null): LengthAwarePaginator
+    public function listRatings(?int $workerId, ?int $clientId, ?int $score = null, ?string $direction = null, ?string $search = null, ?int $ratedUserId = null): LengthAwarePaginator
     {
         $query = RatingReview::query()
             ->with([
@@ -716,6 +716,10 @@ class AdminService
 
         if ($clientId !== null) {
             $query->where('rated_by', $clientId);
+        }
+
+        if ($ratedUserId !== null) {
+            $query->where('rated_user', $ratedUserId);
         }
 
         if ($score !== null) {
@@ -738,6 +742,39 @@ class AdminService
                   ->orWhereHas('booking',     fn ($iq) => $iq->where('booking_code', 'like', "%{$search}%"));
             });
         }
+
+        return $query->paginate(15);
+    }
+
+    public function listRatingRecipients(
+        ?string $role,
+        ?string $search,
+        string $sortBy = 'average_rating',
+        string $sortDirection = 'desc'
+    ): LengthAwarePaginator
+    {
+        $query = User::query()
+            ->with('barangay:id,name')
+            ->where('role', '!=', 'admin')
+            ->withCount('receivedRatings')
+            ->withAvg('receivedRatings', 'score');
+
+        if ($role !== null) {
+            $query->where('role', $role);
+        }
+
+        if ($search !== null) {
+            $query->where(function ($userQuery) use ($search): void {
+                $userQuery
+                    ->where('name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%");
+            });
+        }
+
+        $query->orderBy(
+            $sortBy === 'average_rating' ? 'received_ratings_avg_score' : 'name',
+            $sortDirection
+        )->orderBy('name');
 
         return $query->paginate(15);
     }
@@ -791,8 +828,7 @@ class AdminService
         }
 
         if ($adminName !== null) {
-            $query->whereHas('admin', fn ($adminQuery) =>
-                $adminQuery->where('name', 'like', "%{$adminName}%")
+            $query->whereHas('admin', fn ($adminQuery) => $adminQuery->where('name', 'like', "%{$adminName}%")
             );
         }
 
@@ -831,7 +867,7 @@ class AdminService
     /**
      * List all service categories (admin view — includes inactive).
      */
-    public function listCategories(): \Illuminate\Database\Eloquent\Collection
+    public function listCategories(): Collection
     {
         return ServiceCategory::orderBy('name')->get(['id', 'name', 'icon', 'is_active']);
     }
@@ -857,7 +893,7 @@ class AdminService
     /**
      * Update an existing service category.
      *
-     * @throws \App\Exceptions\BusinessRuleException
+     * @throws BusinessRuleException
      */
     public function updateCategory(User $admin, int $categoryId, array $data): ServiceCategory
     {
@@ -888,7 +924,7 @@ class AdminService
     /**
      * List report reasons configured by admins.
      */
-    public function listReportReasons(?string $audience = null): \Illuminate\Database\Eloquent\Collection
+    public function listReportReasons(?string $audience = null): Collection
     {
         return ReportReason::when($audience, fn ($query) => $query->where('audience', $audience))->orderBy('label')->get();
     }
@@ -961,7 +997,7 @@ class AdminService
      */
     public function getSettings(): array
     {
-        $activeAnnouncement = \App\Models\Announcement::query()
+        $activeAnnouncement = Announcement::query()
             ->where('status', 'published')
             ->where('is_active', true)
             ->active()
@@ -992,9 +1028,9 @@ class AdminService
         ];
     }
 
-    public function listAnnouncements(): \Illuminate\Database\Eloquent\Collection
+    public function listAnnouncements(): Collection
     {
-        return \App\Models\Announcement::query()
+        return Announcement::query()
             ->orderByDesc('created_at')
             ->get([
                 'id',
@@ -1010,9 +1046,9 @@ class AdminService
             ]);
     }
 
-    public function createAnnouncement(User $admin, array $attributes): \App\Models\Announcement
+    public function createAnnouncement(User $admin, array $attributes): Announcement
     {
-        $announcement = \App\Models\Announcement::create([
+        $announcement = Announcement::create([
             'posted_by' => $admin->id,
             'title' => $attributes['title'],
             'body' => $attributes['body'],
@@ -1047,9 +1083,9 @@ class AdminService
         return $announcement;
     }
 
-    public function updateAnnouncement(User $admin, int|string $announcementId, array $attributes): \App\Models\Announcement
+    public function updateAnnouncement(User $admin, int|string $announcementId, array $attributes): Announcement
     {
-        $announcement = \App\Models\Announcement::findOrFail($announcementId);
+        $announcement = Announcement::findOrFail($announcementId);
         $announcement->fill($attributes);
 
         if (isset($attributes['status'])) {
@@ -1068,7 +1104,7 @@ class AdminService
 
     public function deleteAnnouncement(User $admin, int|string $announcementId): void
     {
-        $announcement = \App\Models\Announcement::findOrFail($announcementId);
+        $announcement = Announcement::findOrFail($announcementId);
         $announcement->delete();
 
         $this->audit($admin, 'delete_announcement', 'Announcement', (int) $announcementId, [
@@ -1080,9 +1116,9 @@ class AdminService
      * POST /admin/settings with action=post_announcement — publish a system-wide announcement.
      * Also creates in-app notifications for all active users.
      */
-    public function postAnnouncement(User $admin, string $title, string $body, ?string $expiresAt): \App\Models\Announcement
+    public function postAnnouncement(User $admin, string $title, string $body, ?string $expiresAt): Announcement
     {
-        $announcement = \App\Models\Announcement::create([
+        $announcement = Announcement::create([
             'posted_by'  => $admin->id,
             'title'      => $title,
             'body'       => $body,
@@ -1129,8 +1165,7 @@ class AdminService
         ?string $status = null,
         ?string $verification = null,
         ?string $search = null,
-    ): LengthAwarePaginator
-    {
+    ): LengthAwarePaginator {
         $query = JobPost::withTrashed()
             ->with([
                 'workerProfile.user:id,name,barangay_id',
@@ -1148,8 +1183,7 @@ class AdminService
         }
 
         if ($barangayId !== null) {
-            $query->whereHas('workerProfile.user', fn ($userQuery) =>
-                $userQuery->where('barangay_id', $barangayId)
+            $query->whereHas('workerProfile.user', fn ($userQuery) => $userQuery->where('barangay_id', $barangayId)
             );
         }
 
@@ -1162,20 +1196,17 @@ class AdminService
         }
 
         if ($verification === 'verified') {
-            $query->whereHas('workerProfile', fn ($profileQuery) =>
-                $profileQuery->where('verification_status', 'approved')
+            $query->whereHas('workerProfile', fn ($profileQuery) => $profileQuery->where('verification_status', 'approved')
             );
         } elseif ($verification === 'unverified') {
-            $query->whereHas('workerProfile', fn ($profileQuery) =>
-                $profileQuery->where('verification_status', '!=', 'approved')
+            $query->whereHas('workerProfile', fn ($profileQuery) => $profileQuery->where('verification_status', '!=', 'approved')
             );
         }
 
         if ($search !== null) {
             $query->where(function ($searchQuery) use ($search): void {
                 $searchQuery->where('title', 'like', "%{$search}%")
-                    ->orWhereHas('workerProfile.user', fn ($userQuery) =>
-                        $userQuery->where('name', 'like', "%{$search}%")
+                    ->orWhereHas('workerProfile.user', fn ($userQuery) => $userQuery->where('name', 'like', "%{$search}%")
                     );
             });
         }
