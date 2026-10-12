@@ -53,6 +53,11 @@ class User extends Authenticatable
             'is_active'                => 'boolean',
             'is_google_account'        => 'boolean',
             'two_factor_enabled'      => 'boolean',
+            'notify_booking_updates'   => 'boolean',
+            'notify_messages'          => 'boolean',
+            'notify_promotions'        => 'boolean',
+            'notify_push'              => 'boolean',
+            'notify_email'             => 'boolean',
             'last_seen_at'            => 'datetime',
         ];
     }
@@ -80,6 +85,11 @@ class User extends Authenticatable
     public function receivedRatings(): HasMany
     {
         return $this->hasMany(RatingReview::class, 'rated_user');
+    }
+
+    public function sentRatings(): HasMany
+    {
+        return $this->hasMany(RatingReview::class, 'rated_by');
     }
 
     public function sentMessages(): HasMany

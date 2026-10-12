@@ -2281,13 +2281,64 @@ Response 200:
         "barangay": "Calanggaman",
         "is_active": true,
         "created_at": "...",
-        "last_login_at": "...",
-        "total_bookings": 12,
-        "completed_bookings": 10,
-        "reports_filed": 1,
-        "reports_received": 0,
-        "worker_profile": null
-        // full worker_profile if worker
+        "email_verified_at": "...",
+        "last_seen_at": "...",
+        "two_factor_enabled": true,
+        "notification_preferences": {
+            "booking_updates": true,
+            "messages": true,
+            "promotions": false,
+            "push": true,
+            "email": true
+        },
+        "worker_profile": null,
+        "activity": {
+            "bookings": {
+                "total": 12,
+                "by_status": { "completed": 10, "cancelled": 2 },
+                "pagination": { "current_page": 1, "per_page": 10, "total": 12, "last_page": 2 },
+                "recent": ["first 10 bookings"]
+            },
+            "reviews_received_count": 2,
+            "reviews_given_count": 10,
+            "reviews_received_pagination": { "current_page": 1, "per_page": 10, "total": 2, "last_page": 1 },
+            "reviews_given_pagination": { "current_page": 1, "per_page": 10, "total": 10, "last_page": 1 },
+            "recent_reviews_received": ["first 10 received reviews"],
+            "recent_reviews_given": ["first 10 given reviews"]
+        }
+    }
+}
+
+For workers, `worker_profile` includes biography, verification and trust
+status, availability, rating and completed-job totals, service categories,
+and all job posts with rate, availability, status, and listing image URLs.
+Verification documents are not included. Worker and client activity also
+includes booking summaries and only the first page (10 records) of bookings,
+received reviews, and given reviews. Use the paginated activity endpoints to
+retrieve additional pages.
+```
+
+### K6a. Get a User Activity Page (Admin)
+```
+GET /api/admin/users/{userId}/activity/{type}
+(Admin only; client and worker accounts only)
+
+Types: bookings, reviews-received, reviews-given
+Query Parameters:
+  page:     integer, defaults to 1
+  per_page: integer, defaults to 10, maximum 50
+
+Response 200:
+{
+    "success": true,
+    "data": {
+        "items": ["activity records for this page"],
+        "pagination": {
+            "current_page": 2,
+            "per_page": 10,
+            "total": 23,
+            "last_page": 3
+        }
     }
 }
 ```

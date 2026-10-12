@@ -36,12 +36,12 @@ class AdminService
     public function audit(User $admin, string $action, string $targetType, int $targetId, array $details = [], ?string $ip = null): void
     {
         AdminAuditLog::create([
-            'admin_id'    => $admin->id,
-            'action'      => $action,
+            'admin_id' => $admin->id,
+            'action' => $action,
             'target_type' => $targetType,
-            'target_id'   => $targetId,
-            'details'     => $details ?: null,
-            'ip_address'  => $ip,
+            'target_id' => $targetId,
+            'details' => $details ?: null,
+            'ip_address' => $ip,
         ]);
     }    // ──────────────────────────────────────────────────────────────────────────
     // SECTION 1 — VERIFICATION MANAGEMENT
@@ -92,21 +92,21 @@ class AdminService
         $workerProfile = WorkerProfile::findOrFail($workerProfileId);
 
         $newStatus = match ($action) {
-            'approve'              => 'approved',
-            'reject'               => 'rejected',
+            'approve' => 'approved',
+            'reject' => 'rejected',
             'request_resubmission' => 'resubmission_required',
-            default                => 'rejected',
+            default => 'rejected',
         };
 
         DB::transaction(function () use ($admin, $workerProfile, $newStatus, $adminNotes): void {
             $updateData = [
-                'verification_status'  => $newStatus,
+                'verification_status' => $newStatus,
                 'verification_remarks' => $adminNotes,
             ];
 
             // Spec: auto-set trust_tier = 'verified' when approved
             if ($newStatus === 'approved') {
-                $updateData['trust_tier']  = 'verified';
+                $updateData['trust_tier'] = 'verified';
                 $updateData['verified_by'] = null; // will be set after load
                 $updateData['verified_at'] = now();
             }
@@ -117,9 +117,9 @@ class AdminService
 
             VerificationHistory::create([
                 'worker_profile_id' => $workerProfile->id,
-                'changed_by'        => $admin->id,
-                'status'            => $newStatus,
-                'remarks'           => $adminNotes,
+                'changed_by' => $admin->id,
+                'status' => $newStatus,
+                'remarks' => $adminNotes,
             ]);
         });
 
@@ -127,8 +127,8 @@ class AdminService
         $workerProfile->load('user');
 
         $pushMap = [
-            'approved'              => ['Verification Approved',    'Your account has been verified. You can now receive bookings.'],
-            'rejected'              => ['Verification Rejected',     'Your verification was rejected. Please resubmit your documents.'],
+            'approved' => ['Verification Approved',    'Your account has been verified. You can now receive bookings.'],
+            'rejected' => ['Verification Rejected',     'Your verification was rejected. Please resubmit your documents.'],
             'resubmission_required' => ['Resubmission Required',    'Admin has requested changes to your verification documents.'],
         ];
 
@@ -138,13 +138,13 @@ class AdminService
             $workerProfile->user,
             $title,
             $body,
-            ['type' => 'verification_' . $newStatus],
+            ['type' => 'verification_'.$newStatus],
         );
         $this->notificationService->notify(
             $workerProfile->user,
             $title,
             $body,
-            'verification_' . $newStatus,
+            'verification_'.$newStatus,
         );
 
         return $workerProfile;
@@ -205,7 +205,7 @@ class AdminService
         if ($search !== null) {
             $query->where(function ($q) use ($search): void {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%");
+                    ->orWhere('email', 'like', "%{$search}%");
             });
         }
 
@@ -221,11 +221,90 @@ class AdminService
 
         if ($user->role === 'worker') {
             $user->load([
-                'workerProfile:id,user_id,verification_status,average_rating,total_reviews',
+                'workerProfile.serviceCategories:id,name',
+                'workerProfile.verifiedBy:id,name',
+                'workerProfile.jobPosts' => fn ($query) => $query
+                    ->withTrashed()
+                    ->with([
+                        'serviceCategory:id,name',
+                        'images:id,job_post_id,image_path,thumbnail_path,display_order',
+                    ])
+                    ->orderByDesc('created_at'),
             ]);
         }
 
+        if (in_array($user->role, ['client', 'worker'], true)) {
+            $bookingRelation = $user->role === 'client'
+                ? $user->clientBookings()
+                : $user->workerBookings();
+            $otherPartyRelation = $user->role === 'client' ? 'worker' : 'client';
+
+            $user->setAttribute(
+                'booking_counts',
+                (clone $bookingRelation)
+                    ->selectRaw('status, COUNT(*) as aggregate')
+                    ->groupBy('status')
+                    ->pluck('aggregate', 'status')
+                    ->all()
+            );
+            $user->setRelation(
+                'recentBookings',
+                (clone $bookingRelation)
+                    ->with([$otherPartyRelation.':id,name', 'serviceCategory:id,name'])
+                    ->orderByDesc('created_at')
+                    ->orderByDesc('id')
+                    ->limit(10)
+                    ->get()
+            );
+            $user->setAttribute('reviews_received_count', $user->receivedRatings()->count());
+            $user->setAttribute('reviews_given_count', $user->sentRatings()->count());
+            $user->setRelation(
+                'recentReceivedRatings',
+                $user->receivedRatings()
+                    ->with(['ratedByUser:id,name', 'booking:id,booking_code'])
+                    ->latest()
+                    ->orderByDesc('id')
+                    ->limit(10)
+                    ->get()
+            );
+            $user->setRelation(
+                'recentSentRatings',
+                $user->sentRatings()
+                    ->with(['ratedUser:id,name', 'booking:id,booking_code'])
+                    ->latest()
+                    ->orderByDesc('id')
+                    ->limit(10)
+                    ->get()
+            );
+        }
+
         return $user;
+    }
+
+    public function getUserActivityPage(int $id, string $type, int $perPage): LengthAwarePaginator
+    {
+        $user = User::query()->findOrFail($id);
+
+        if (! in_array($user->role, ['client', 'worker'], true)) {
+            abort(404, 'User activity not found.');
+        }
+
+        $query = match ($type) {
+            'bookings' => ($user->role === 'client' ? $user->clientBookings() : $user->workerBookings())
+                ->with([
+                    ($user->role === 'client' ? 'worker' : 'client').':id,name',
+                    'serviceCategory:id,name',
+                ]),
+            'reviews-received' => $user->receivedRatings()
+                ->with(['ratedByUser:id,name', 'booking:id,booking_code']),
+            'reviews-given' => $user->sentRatings()
+                ->with(['ratedUser:id,name', 'booking:id,booking_code']),
+        };
+
+        return $query
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate($perPage);
     }
 
     public function createUser(array $attributes, User $admin): User
@@ -272,7 +351,7 @@ class AdminService
         $role = $attributes['role'] ?? $user->role;
         $updateData = collect($attributes)->except('password')->all();
 
-        if (!empty($attributes['password'])) {
+        if (! empty($attributes['password'])) {
             $updateData['password'] = $attributes['password'];
         }
 
@@ -368,8 +447,8 @@ class AdminService
         if ($search !== null) {
             $query->where(function ($q) use ($search): void {
                 $q->where('booking_code', 'like', "%{$search}%")
-                  ->orWhereHas('client', fn ($cq) => $cq->where('name', 'like', "%{$search}%"))
-                  ->orWhereHas('worker', fn ($wq) => $wq->where('name', 'like', "%{$search}%"));
+                    ->orWhereHas('client', fn ($cq) => $cq->where('name', 'like', "%{$search}%"))
+                    ->orWhereHas('worker', fn ($wq) => $wq->where('name', 'like', "%{$search}%"));
             });
         }
 
@@ -445,11 +524,11 @@ class AdminService
         $effectiveAction = $action;
         if ($resolutionAction !== null && $effectiveAction === null) {
             $effectiveAction = match ($resolutionAction) {
-                'account_suspended'    => 'suspend_user',
+                'account_suspended' => 'suspend_user',
                 'verification_revoked' => 'revoke_trust_tier',
-                'warning_issued'       => 'warn_user',
-                'no_action'            => null,
-                default                => null,
+                'warning_issued' => 'warn_user',
+                'no_action' => null,
+                default => null,
             };
         }
 
@@ -462,21 +541,21 @@ class AdminService
 
         DB::transaction(function () use ($report, $status, $adminNotes, $effectiveAction, $storedResolutionAction, $resolvedById): void {
             $report->update([
-                'status'            => $status,
-                'admin_remarks'     => $adminNotes,
+                'status' => $status,
+                'admin_remarks' => $adminNotes,
                 'resolution_action' => $status === 'resolved' ? $storedResolutionAction : null,
-                'resolved_by'       => $status === 'resolved' ? $resolvedById : null,
-                'resolved_at'       => $status === 'resolved' ? now() : null,
+                'resolved_by' => $status === 'resolved' ? $resolvedById : null,
+                'resolved_at' => $status === 'resolved' ? now() : null,
             ]);
 
             if ($status === 'resolved' && $effectiveAction !== null) {
                 $reportedUser = $report->reportedUser;
 
                 match ($effectiveAction) {
-                    'suspend_user'      => $reportedUser?->update(['is_active' => false]),
+                    'suspend_user' => $reportedUser?->update(['is_active' => false]),
                     'revoke_trust_tier' => $reportedUser?->workerProfile?->update(['trust_tier' => 'revoked']),
-                    'warn_user'         => null,
-                    default             => null,
+                    'warn_user' => null,
+                    default => null,
                 };
             }
         });
@@ -503,10 +582,10 @@ class AdminService
             ->limit(10)
             ->get()
             ->map(fn ($log) => [
-                'type'        => $log->action,
+                'type' => $log->action,
                 'description' => ucfirst(str_replace('_', ' ', $log->action))
-                    . ' by ' . ($log->admin?->name ?? 'Admin'),
-                'created_at'  => $log->created_at?->toIso8601String(),
+                    .' by '.($log->admin?->name ?? 'Admin'),
+                'created_at' => $log->created_at?->toIso8601String(),
             ])
             ->all();
 
@@ -556,7 +635,7 @@ class AdminService
             ->limit(8)
             ->get()
             ->map(fn ($category) => [
-                'name'  => $category->name,
+                'name' => $category->name,
                 'count' => (int) $category->booking_count,
             ])
             ->values()
@@ -584,22 +663,22 @@ class AdminService
             ->count();
 
         return [
-            'total_users'                  => (int) $userCounts->total_users,
-            'total_workers'                => (int) $userCounts->total_workers,
-            'total_clients'                => (int) $userCounts->total_clients,
-            'pending_verifications'        => WorkerProfile::where('verification_status', 'pending')->count(),
-            'total_bookings'               => (int) $bookingCounts->total_bookings,
-            'active_bookings'              => (int) $bookingCounts->active_bookings,
-            'completed_bookings'           => (int) $bookingCounts->completed_bookings,
-            'completed_bookings_today'     => (int) $bookingCounts->completed_bookings_today,
+            'total_users' => (int) $userCounts->total_users,
+            'total_workers' => (int) $userCounts->total_workers,
+            'total_clients' => (int) $userCounts->total_clients,
+            'pending_verifications' => WorkerProfile::where('verification_status', 'pending')->count(),
+            'total_bookings' => (int) $bookingCounts->total_bookings,
+            'active_bookings' => (int) $bookingCounts->active_bookings,
+            'completed_bookings' => (int) $bookingCounts->completed_bookings,
+            'completed_bookings_today' => (int) $bookingCounts->completed_bookings_today,
             'completed_bookings_yesterday' => (int) $bookingCounts->completed_bookings_yesterday,
-            'total_reports'                => (int) $reportCounts->total_reports,
-            'open_reports'                 => (int) $reportCounts->open_reports,
-            'open_disputes'                => (int) $reportCounts->open_reports,
-            'total_active_job_posts'       => $activeJobPosts,
-            'activity_trend'               => $activityTrend,
-            'top_service_categories'      => $topServiceCategories,
-            'recent_activity'              => $recentActivity,
+            'total_reports' => (int) $reportCounts->total_reports,
+            'open_reports' => (int) $reportCounts->open_reports,
+            'open_disputes' => (int) $reportCounts->open_reports,
+            'total_active_job_posts' => $activeJobPosts,
+            'activity_trend' => $activityTrend,
+            'top_service_categories' => $topServiceCategories,
+            'recent_activity' => $recentActivity,
         ];
     }
 
@@ -617,14 +696,14 @@ class AdminService
         $previous = $profile->trust_tier;
 
         $profile->update([
-            'trust_tier'           => $tier,
+            'trust_tier' => $tier,
             'verification_remarks' => $remarks,
         ]);
 
         $this->audit($admin, 'update_trust_tier', 'WorkerProfile', $profile->id, [
             'previous_tier' => $previous,
-            'new_tier'      => $tier,
-            'remarks'       => $remarks,
+            'new_tier' => $tier,
+            'remarks' => $remarks,
         ]);
 
         $this->notificationService->notify(
@@ -666,14 +745,14 @@ class AdminService
         }
 
         $booking->update([
-            'status'            => 'cancelled',
-            'cancelled_by'      => 'admin',
+            'status' => 'cancelled',
+            'cancelled_by' => 'admin',
             'cancellation_reason' => $reason,
             'force_cancelled_by' => $admin->id,
         ]);
 
         $this->audit($admin, 'force_cancel_booking', 'Booking', $booking->id, [
-            'reason'          => $reason,
+            'reason' => $reason,
             'previous_status' => $booking->getOriginal('status'),
         ]);
 
@@ -738,8 +817,8 @@ class AdminService
         if ($search !== null) {
             $query->where(function ($q) use ($search): void {
                 $q->whereHas('ratedByUser', fn ($iq) => $iq->where('name', 'like', "%{$search}%"))
-                  ->orWhereHas('ratedUser',   fn ($iq) => $iq->where('name', 'like', "%{$search}%"))
-                  ->orWhereHas('booking',     fn ($iq) => $iq->where('booking_code', 'like', "%{$search}%"));
+                    ->orWhereHas('ratedUser', fn ($iq) => $iq->where('name', 'like', "%{$search}%"))
+                    ->orWhereHas('booking', fn ($iq) => $iq->where('booking_code', 'like', "%{$search}%"));
             });
         }
 
@@ -751,8 +830,7 @@ class AdminService
         ?string $search,
         string $sortBy = 'average_rating',
         string $sortDirection = 'desc'
-    ): LengthAwarePaginator
-    {
+    ): LengthAwarePaginator {
         $query = User::query()
             ->with('barangay:id,name')
             ->where('role', '!=', 'admin')
@@ -790,10 +868,10 @@ class AdminService
 
         DB::transaction(function () use ($rating, $admin, $reason): void {
             $this->audit($admin, 'delete_rating', 'RatingReview', $rating->id, [
-                'score'        => $rating->score,
-                'rated_user'   => $rating->rated_user,
-                'booking_id'   => $rating->booking_id,
-                'reason'       => $reason,
+                'score' => $rating->score,
+                'rated_user' => $rating->rated_user,
+                'booking_id' => $rating->booking_id,
+                'reason' => $reason,
             ]);
 
             $rating->delete();
@@ -805,7 +883,7 @@ class AdminService
             $remaining = RatingReview::where('rated_user', $workerUserId)->get();
             $profile->update([
                 'average_rating' => $remaining->avg('score') ?? 0,
-                'total_reviews'  => $remaining->count(),
+                'total_reviews' => $remaining->count(),
             ]);
         }
     }
@@ -878,8 +956,8 @@ class AdminService
     public function createCategory(User $admin, array $data): ServiceCategory
     {
         $category = ServiceCategory::create([
-            'name'      => $data['name'],
-            'icon'      => $data['icon'] ?? null,
+            'name' => $data['name'],
+            'icon' => $data['icon'] ?? null,
             'is_active' => $data['is_active'] ?? true,
         ]);
 
@@ -1005,25 +1083,25 @@ class AdminService
             ->first();
 
         return [
-            'service_categories'      => ServiceCategory::orderBy('name')->get(['id', 'name', 'icon', 'is_active']),
-            'report_reasons'          => ReportReason::query()
+            'service_categories' => ServiceCategory::orderBy('name')->get(['id', 'name', 'icon', 'is_active']),
+            'report_reasons' => ReportReason::query()
                 ->orderBy('label')
                 ->pluck('code')
                 ->all(),
-            'notification_templates'  => [
-                'booking_accepted'   => 'Your booking {booking_code} has been accepted.',
-                'booking_declined'   => 'Your booking {booking_code} has been declined.',
-                'booking_completed'  => 'Your booking {booking_code} has been completed.',
+            'notification_templates' => [
+                'booking_accepted' => 'Your booking {booking_code} has been accepted.',
+                'booking_declined' => 'Your booking {booking_code} has been declined.',
+                'booking_completed' => 'Your booking {booking_code} has been completed.',
                 'verification_approved' => 'Your account has been verified. You can now receive bookings.',
                 'verification_rejected' => 'Your verification was rejected. Please resubmit your documents.',
-                'new_review'         => 'You received a new review!',
+                'new_review' => 'You received a new review!',
             ],
-            'active_announcement'     => $activeAnnouncement ? [
-                'id'         => $activeAnnouncement->id,
-                'title'      => $activeAnnouncement->title,
-                'body'       => $activeAnnouncement->body,
+            'active_announcement' => $activeAnnouncement ? [
+                'id' => $activeAnnouncement->id,
+                'title' => $activeAnnouncement->title,
+                'body' => $activeAnnouncement->body,
                 'expires_at' => $activeAnnouncement->expires_at?->toDateString(),
-                'posted_at'  => $activeAnnouncement->created_at?->toIso8601String(),
+                'posted_at' => $activeAnnouncement->created_at?->toIso8601String(),
             ] : null,
         ];
     }
@@ -1119,17 +1197,17 @@ class AdminService
     public function postAnnouncement(User $admin, string $title, string $body, ?string $expiresAt): Announcement
     {
         $announcement = Announcement::create([
-            'posted_by'  => $admin->id,
-            'title'      => $title,
-            'body'       => $body,
-            'status'     => 'published',
+            'posted_by' => $admin->id,
+            'title' => $title,
+            'body' => $body,
+            'status' => 'published',
             'target_audience' => 'all',
             'expires_at' => $expiresAt,
-            'is_active'  => true,
+            'is_active' => true,
         ]);
 
         $this->audit($admin, 'post_announcement', 'Announcement', $announcement->id, [
-            'title'      => $title,
+            'title' => $title,
             'expires_at' => $expiresAt,
         ]);
 
@@ -1314,9 +1392,9 @@ class AdminService
 
         foreach ($posts as $post) {
             $this->audit($admin, 'delete_job_post', 'JobPost', $post->id, [
-                'title'             => $post->title,
+                'title' => $post->title,
                 'worker_profile_id' => $post->worker_profile_id,
-                'reason'            => $reason,
+                'reason' => $reason,
             ]);
 
             if ($post->workerProfile?->user) {

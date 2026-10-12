@@ -38,6 +38,11 @@ class WorkerProfile extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function verifiedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'verified_by');
+    }
+
     public function verificationDocuments(): HasMany
     {
         return $this->hasMany(VerificationDocument::class);

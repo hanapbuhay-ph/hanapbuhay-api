@@ -2,6 +2,8 @@
 
 use App\Models\Barangay;
 use App\Models\Booking;
+use App\Models\JobPost;
+use App\Models\RatingReview;
 use App\Models\Report;
 use App\Models\ServiceCategory;
 use App\Models\User;
@@ -23,7 +25,7 @@ $makeAdmin = function (): User {
 // MIDDLEWARE
 // ══════════════════════════════════════════════════════════════════════════════
 
-it('returns 403 when a non-admin (client) hits any admin route', function () use ($makeAdmin) {
+it('returns 403 when a non-admin (client) hits any admin route', function () {
     $client = makeBookingClient();
 
     $this->actingAs($client)
@@ -56,23 +58,23 @@ it('admin lists all verifications with pagination', function () use ($makeAdmin)
         ->assertJsonStructure([
             'data' => [
                 'verifications' => [['id', 'user', 'verification_status', 'documents', 'updated_at']],
-                'pagination'    => ['current_page', 'per_page', 'total', 'last_page'],
+                'pagination' => ['current_page', 'per_page', 'total', 'last_page'],
             ],
         ]);
 });
 
 it('admin can retrieve a verification detail with document URLs', function () use ($makeAdmin) {
-    $admin   = $makeAdmin();
-    $worker  = User::factory()->create(['role' => 'worker']);
+    $admin = $makeAdmin();
+    $worker = User::factory()->create(['role' => 'worker']);
     $profile = WorkerProfile::factory()->create([
-        'user_id'             => $worker->id,
+        'user_id' => $worker->id,
         'verification_status' => 'pending',
     ]);
     VerificationDocument::factory()->create([
         'worker_profile_id' => $profile->id,
-        'document_type'     => 'government_id',
-        'file_path'         => 'verifications/1/government_id.jpg',
-        'status'            => 'pending',
+        'document_type' => 'government_id',
+        'file_path' => 'verifications/1/government_id.jpg',
+        'status' => 'pending',
     ]);
 
     $this->actingAs($admin)
@@ -91,7 +93,7 @@ it('admin filters verifications by status=pending and only pending records are r
     // pending worker
     $pendingWorker = User::factory()->create(['role' => 'worker']);
     WorkerProfile::factory()->create([
-        'user_id'             => $pendingWorker->id,
+        'user_id' => $pendingWorker->id,
         'verification_status' => 'pending',
     ]);
 
@@ -111,12 +113,12 @@ it('admin approves a worker verification', function () use ($makeAdmin) {
 
     $worker = User::factory()->create(['role' => 'worker']);
     $profile = WorkerProfile::factory()->create([
-        'user_id'             => $worker->id,
+        'user_id' => $worker->id,
         'verification_status' => 'pending',
     ]);
     VerificationDocument::factory()->create([
         'worker_profile_id' => $profile->id,
-        'status'            => 'pending',
+        'status' => 'pending',
     ]);
 
     // Mock NotificationService so no real FCM call is made
@@ -131,7 +133,7 @@ it('admin approves a worker verification', function () use ($makeAdmin) {
 
     $this->actingAs($admin)
         ->postJson("/api/admin/verifications/{$profile->id}/review", [
-            'action'      => 'approve',
+            'action' => 'approve',
             'admin_notes' => 'All documents verified.',
         ])
         ->assertStatus(200)
@@ -148,14 +150,14 @@ it('admin approves a worker verification', function () use ($makeAdmin) {
 it('admin rejects a worker verification', function () use ($makeAdmin) {
     $admin = $makeAdmin();
 
-    $worker  = User::factory()->create(['role' => 'worker']);
+    $worker = User::factory()->create(['role' => 'worker']);
     $profile = WorkerProfile::factory()->create([
-        'user_id'             => $worker->id,
+        'user_id' => $worker->id,
         'verification_status' => 'pending',
     ]);
     VerificationDocument::factory()->create([
         'worker_profile_id' => $profile->id,
-        'status'            => 'pending',
+        'status' => 'pending',
     ]);
 
     $this->mock(NotificationService::class)
@@ -178,7 +180,7 @@ it('admin rejects a worker verification', function () use ($makeAdmin) {
 });
 
 it('returns 422 for an invalid action value in verification review', function () use ($makeAdmin) {
-    $admin   = $makeAdmin();
+    $admin = $makeAdmin();
     $profile = WorkerProfile::factory()->create();
 
     $this->actingAs($admin)
@@ -214,7 +216,7 @@ it('admin lists all users with pagination', function () use ($makeAdmin) {
         ->assertJsonPath('message', 'Users retrieved.')
         ->assertJsonStructure([
             'data' => [
-                'users'      => [['id', 'name', 'email', 'role', 'is_active', 'created_at']],
+                'users' => [['id', 'name', 'email', 'role', 'is_active', 'created_at']],
                 'pagination' => ['current_page', 'per_page', 'total', 'last_page'],
             ],
         ]);
@@ -248,27 +250,148 @@ it('admin filters users by partial name search', function () use ($makeAdmin) {
 });
 
 it('admin views a single worker user and response includes worker_profile', function () use ($makeAdmin) {
-    $admin  = $makeAdmin();
+    $admin = $makeAdmin();
     $worker = makeApprovedBookingWorker();
+    $profile = $worker->workerProfile;
+    $profile->update([
+        'bio' => 'Experienced home service worker.',
+        'trust_tier' => 'trusted',
+        'availability_status' => 'available',
+        'completed_jobs' => 12,
+        'verified_by' => $admin->id,
+        'verified_at' => now(),
+    ]);
+    $category = ServiceCategory::factory()->create(['name' => 'Electrical']);
+    $profile->serviceCategories()->attach($category->id);
+    $post = JobPost::factory()->create([
+        'worker_profile_id' => $profile->id,
+        'service_category_id' => $category->id,
+        'title' => 'Electrical repairs',
+    ]);
 
     $this->actingAs($admin)
         ->getJson("/api/admin/users/{$worker->id}")
         ->assertStatus(200)
         ->assertJsonPath('success', true)
         ->assertJsonPath('data.role', 'worker')
-        ->assertJsonStructure(['data' => ['worker_profile' => ['verification_status', 'average_rating', 'total_reviews']]]);
+        ->assertJsonPath('data.worker_profile.bio', 'Experienced home service worker.')
+        ->assertJsonPath('data.worker_profile.trust_tier', 'trusted')
+        ->assertJsonPath('data.worker_profile.completed_jobs', 12)
+        ->assertJsonPath('data.worker_profile.verified_by.id', $admin->id)
+        ->assertJsonPath('data.worker_profile.service_categories.0.name', 'Electrical')
+        ->assertJsonPath('data.worker_profile.job_posts.0.id', $post->id)
+        ->assertJsonPath('data.worker_profile.job_posts.0.title', 'Electrical repairs')
+        ->assertJsonStructure([
+            'data' => [
+                'worker_profile' => [
+                    'verification_status', 'average_rating', 'total_reviews', 'bio',
+                    'trust_tier', 'availability_status', 'completed_jobs',
+                    'service_categories', 'job_posts',
+                ],
+                'activity' => [
+                    'bookings' => ['total', 'by_status', 'recent'],
+                    'reviews_received_count',
+                    'reviews_given_count',
+                ],
+                'notification_preferences' => ['booking_updates', 'messages', 'promotions', 'push', 'email'],
+            ],
+        ]);
 });
 
-it('admin views a single client user and response has no worker_profile', function () use ($makeAdmin) {
-    $admin  = $makeAdmin();
+it('admin views client booking and review activity', function () use ($makeAdmin) {
+    $admin = $makeAdmin();
     $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
+    $category = ServiceCategory::factory()->create();
+    $booking = Booking::factory()->create([
+        'client_id' => $client->id,
+        'worker_id' => $worker->id,
+        'service_category_id' => $category->id,
+        'status' => 'completed',
+    ]);
+    RatingReview::create([
+        'booking_id' => $booking->id,
+        'rated_by' => $worker->id,
+        'rated_user' => $client->id,
+        'score' => 5,
+        'comment' => 'Excellent client.',
+    ]);
+    RatingReview::create([
+        'booking_id' => $booking->id,
+        'rated_by' => $client->id,
+        'rated_user' => $worker->id,
+        'score' => 4,
+        'comment' => 'Professional worker.',
+    ]);
 
     $response = $this->actingAs($admin)
         ->getJson("/api/admin/users/{$client->id}")
         ->assertStatus(200)
-        ->assertJsonPath('data.role', 'client');
+        ->assertJsonPath('data.role', 'client')
+        ->assertJsonPath('data.activity.bookings.total', 1)
+        ->assertJsonPath('data.activity.bookings.by_status.completed', 1)
+        ->assertJsonPath('data.activity.bookings.recent.0.booking_code', $booking->booking_code)
+        ->assertJsonPath('data.activity.reviews_received_count', 1)
+        ->assertJsonPath('data.activity.recent_reviews_received.0.from', $worker->name)
+        ->assertJsonPath('data.activity.reviews_given_count', 1)
+        ->assertJsonPath('data.activity.recent_reviews_given.0.to', $worker->name);
 
     expect($response->json('data'))->not->toHaveKey('worker_profile');
+});
+
+it('admin can page through user bookings and reviews without loading all activity', function () use ($makeAdmin) {
+    $admin = $makeAdmin();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
+
+    foreach (range(1, 12) as $index) {
+        $booking = Booking::factory()->create([
+            'client_id' => $client->id,
+            'worker_id' => $worker->id,
+        ]);
+        RatingReview::create([
+            'booking_id' => $booking->id,
+            'rated_by' => $worker->id,
+            'rated_user' => $client->id,
+            'score' => 5,
+            'comment' => "Received review {$index}.",
+        ]);
+        RatingReview::create([
+            'booking_id' => $booking->id,
+            'rated_by' => $client->id,
+            'rated_user' => $worker->id,
+            'score' => 4,
+            'comment' => "Given review {$index}.",
+        ]);
+    }
+
+    $detail = $this->actingAs($admin)
+        ->getJson("/api/admin/users/{$client->id}")
+        ->assertOk()
+        ->assertJsonPath('data.activity.bookings.pagination.total', 12)
+        ->assertJsonPath('data.activity.bookings.pagination.last_page', 2)
+        ->assertJsonPath('data.activity.reviews_received_pagination.total', 12)
+        ->assertJsonPath('data.activity.reviews_given_pagination.total', 12);
+
+    expect($detail->json('data.activity.bookings.recent'))->toHaveCount(10)
+        ->and($detail->json('data.activity.recent_reviews_received'))->toHaveCount(10)
+        ->and($detail->json('data.activity.recent_reviews_given'))->toHaveCount(10);
+
+    $this->getJson("/api/admin/users/{$client->id}/activity/bookings?page=2")
+        ->assertOk()
+        ->assertJsonPath('data.pagination.current_page', 2)
+        ->assertJsonPath('data.pagination.total', 12)
+        ->assertJsonCount(2, 'data.items');
+
+    $this->getJson("/api/admin/users/{$client->id}/activity/reviews-received?page=2")
+        ->assertOk()
+        ->assertJsonPath('data.pagination.current_page', 2)
+        ->assertJsonCount(2, 'data.items');
+
+    $this->getJson("/api/admin/users/{$client->id}/activity/reviews-given?page=2")
+        ->assertOk()
+        ->assertJsonPath('data.pagination.current_page', 2)
+        ->assertJsonCount(2, 'data.items');
 });
 
 it('admin can create a worker user and worker profile', function () use ($makeAdmin) {
@@ -341,7 +464,7 @@ it('admin cannot delete their own account', function () use ($makeAdmin) {
 });
 
 it('admin toggles a user inactive', function () use ($makeAdmin) {
-    $admin  = $makeAdmin();
+    $admin = $makeAdmin();
     $client = User::factory()->create(['role' => 'client', 'is_active' => true]);
 
     $this->actingAs($admin)
@@ -353,7 +476,7 @@ it('admin toggles a user inactive', function () use ($makeAdmin) {
 });
 
 it('admin toggles the same user active again', function () use ($makeAdmin) {
-    $admin  = $makeAdmin();
+    $admin = $makeAdmin();
     $client = User::factory()->create(['role' => 'client', 'is_active' => false]);
 
     $this->actingAs($admin)
@@ -379,16 +502,16 @@ it('admin cannot deactivate their own account', function () use ($makeAdmin) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 it('admin lists all bookings with pagination', function () use ($makeAdmin) {
-    $admin    = $makeAdmin();
-    $client   = makeBookingClient();
-    $worker   = makeApprovedBookingWorker();
+    $admin = $makeAdmin();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $category = ServiceCategory::factory()->create();
 
     Booking::factory()->create([
-        'client_id'           => $client->id,
-        'worker_id'           => $worker->id,
+        'client_id' => $client->id,
+        'worker_id' => $worker->id,
         'service_category_id' => $category->id,
-        'status'              => 'completed',
+        'status' => 'completed',
     ]);
 
     $this->actingAs($admin)
@@ -398,29 +521,29 @@ it('admin lists all bookings with pagination', function () use ($makeAdmin) {
         ->assertJsonPath('message', 'Bookings retrieved.')
         ->assertJsonStructure([
             'data' => [
-                'bookings'   => [['id', 'booking_code', 'status', 'client', 'worker', 'service_category']],
+                'bookings' => [['id', 'booking_code', 'status', 'client', 'worker', 'service_category']],
                 'pagination' => ['current_page', 'per_page', 'total', 'last_page'],
             ],
         ]);
 });
 
 it('admin filters bookings by status=completed and only completed bookings are returned', function () use ($makeAdmin) {
-    $admin    = $makeAdmin();
-    $client   = makeBookingClient();
-    $worker   = makeApprovedBookingWorker();
+    $admin = $makeAdmin();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $category = ServiceCategory::factory()->create();
 
     Booking::factory()->create([
-        'client_id'           => $client->id,
-        'worker_id'           => $worker->id,
+        'client_id' => $client->id,
+        'worker_id' => $worker->id,
         'service_category_id' => $category->id,
-        'status'              => 'completed',
+        'status' => 'completed',
     ]);
     Booking::factory()->create([
-        'client_id'           => $client->id,
-        'worker_id'           => $worker->id,
+        'client_id' => $client->id,
+        'worker_id' => $worker->id,
         'service_category_id' => $category->id,
-        'status'              => 'pending',
+        'status' => 'pending',
     ]);
 
     $response = $this->actingAs($admin)
@@ -432,17 +555,17 @@ it('admin filters bookings by status=completed and only completed bookings are r
 });
 
 it('admin views a single booking with full detail', function () use ($makeAdmin) {
-    $admin    = $makeAdmin();
-    $client   = makeBookingClient();
-    $worker   = makeApprovedBookingWorker();
+    $admin = $makeAdmin();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $category = ServiceCategory::factory()->create();
 
     $booking = Booking::factory()->create([
-        'client_id'           => $client->id,
-        'worker_id'           => $worker->id,
+        'client_id' => $client->id,
+        'worker_id' => $worker->id,
         'service_category_id' => $category->id,
-        'status'              => 'completed',
-        'notes'               => 'Please bring tools.',
+        'status' => 'completed',
+        'notes' => 'Please bring tools.',
     ]);
 
     $this->actingAs($admin)
@@ -470,25 +593,25 @@ it('returns 404 for a non-existent booking', function () use ($makeAdmin) {
  * Helper: create a Report with linked booking, reporter, and reported user.
  */
 $makeReport = function (string $status = 'under_review'): Report {
-    $client   = makeBookingClient();
-    $worker   = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $category = ServiceCategory::factory()->create();
 
     $booking = Booking::factory()->create([
-        'client_id'           => $client->id,
-        'worker_id'           => $worker->id,
+        'client_id' => $client->id,
+        'worker_id' => $worker->id,
         'service_category_id' => $category->id,
-        'status'              => 'completed',
+        'status' => 'completed',
     ]);
 
     return Report::create([
-        'booking_id'    => $booking->id,
-        'reported_by'   => $client->id,
+        'booking_id' => $booking->id,
+        'reported_by' => $client->id,
         'reported_user' => $worker->id,
-        'reason'        => 'misconduct',
-        'description'   => 'Worker was rude.',
-        'evidence_paths'=> ['evidence/1.jpg'],
-        'status'        => $status,
+        'reason' => 'misconduct',
+        'description' => 'Worker was rude.',
+        'evidence_paths' => ['evidence/1.jpg'],
+        'status' => $status,
         'admin_remarks' => null,
     ]);
 };
@@ -504,7 +627,7 @@ it('admin lists all reports with pagination', function () use ($makeAdmin, $make
         ->assertJsonPath('message', 'Reports retrieved.')
         ->assertJsonStructure([
             'data' => [
-                'reports'    => [['id', 'reason', 'status', 'booking', 'reporter', 'reported_user']],
+                'reports' => [['id', 'reason', 'status', 'booking', 'reporter', 'reported_user']],
                 'pagination' => ['current_page', 'per_page', 'total', 'last_page'],
             ],
         ]);
@@ -524,7 +647,7 @@ it('admin filters reports by status=under_review and only correct results are re
 });
 
 it('admin views a single report with evidence_paths and admin_notes', function () use ($makeAdmin, $makeReport) {
-    $admin  = $makeAdmin();
+    $admin = $makeAdmin();
     $report = $makeReport();
 
     $this->actingAs($admin)
@@ -536,12 +659,12 @@ it('admin views a single report with evidence_paths and admin_notes', function (
 });
 
 it('admin resolves a report and status is resolved in DB', function () use ($makeAdmin, $makeReport) {
-    $admin  = $makeAdmin();
+    $admin = $makeAdmin();
     $report = $makeReport();
 
     $this->actingAs($admin)
         ->patchJson("/api/admin/reports/{$report->id}/resolve", [
-            'status'      => 'resolved',
+            'status' => 'resolved',
             'admin_notes' => 'Issue has been addressed.',
         ])
         ->assertStatus(200)
@@ -554,7 +677,7 @@ it('admin resolves a report and status is resolved in DB', function () use ($mak
 });
 
 it('admin dismisses a report and status is dismissed in DB', function () use ($makeAdmin, $makeReport) {
-    $admin  = $makeAdmin();
+    $admin = $makeAdmin();
     $report = $makeReport();
 
     $this->actingAs($admin)
@@ -568,7 +691,7 @@ it('admin dismisses a report and status is dismissed in DB', function () use ($m
 });
 
 it('returns 422 for an invalid status value in resolve report', function () use ($makeAdmin, $makeReport) {
-    $admin  = $makeAdmin();
+    $admin = $makeAdmin();
     $report = $makeReport();
 
     $this->actingAs($admin)
@@ -597,39 +720,39 @@ it('dashboard returns all stat keys with correct integer values', function () us
     $admin = $makeAdmin();
 
     // Seed known counts
-    $client  = makeBookingClient();
-    $worker  = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $category = ServiceCategory::factory()->create();
 
     // One pending verification
     $pendingWorker = User::factory()->create(['role' => 'worker']);
     WorkerProfile::factory()->create([
-        'user_id'             => $pendingWorker->id,
+        'user_id' => $pendingWorker->id,
         'verification_status' => 'pending',
     ]);
 
     // Bookings
     $activeBooking = Booking::factory()->create([
-        'client_id'           => $client->id,
-        'worker_id'           => $worker->id,
+        'client_id' => $client->id,
+        'worker_id' => $worker->id,
         'service_category_id' => $category->id,
-        'status'              => 'active',
+        'status' => 'active',
     ]);
     $completedBooking = Booking::factory()->create([
-        'client_id'           => $client->id,
-        'worker_id'           => $worker->id,
+        'client_id' => $client->id,
+        'worker_id' => $worker->id,
         'service_category_id' => $category->id,
-        'status'              => 'completed',
+        'status' => 'completed',
     ]);
 
     // Report under review
     Report::create([
-        'booking_id'    => $completedBooking->id,
-        'reported_by'   => $client->id,
+        'booking_id' => $completedBooking->id,
+        'reported_by' => $client->id,
         'reported_user' => $worker->id,
-        'reason'        => 'misconduct',
-        'description'   => 'Test',
-        'status'        => 'under_review',
+        'reason' => 'misconduct',
+        'description' => 'Test',
+        'status' => 'under_review',
     ]);
 
     $response = $this->actingAs($admin)
