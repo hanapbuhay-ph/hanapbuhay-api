@@ -397,10 +397,10 @@ User Management:
 - View user's booking history
 
 Booking Oversight:
-- Read-only view of all bookings, filterable by
-  status and date range
-- Used for monitoring/support, not for admin to
-  modify bookings directly
+- View all bookings, filterable by status and date range
+- Admin can create a pending booking on behalf of a client
+- Admin can reschedule pending bookings; both parties are notified
+- Admin can force-cancel eligible bookings
 
 Reports Queue:
 - List of under_review reports

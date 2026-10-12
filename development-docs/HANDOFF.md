@@ -250,6 +250,8 @@ GET   /api/admin/users/{id}
 PATCH /api/admin/users/{id}/toggle-active
 GET   /api/admin/bookings
 GET   /api/admin/bookings/{id}
+POST  /api/admin/bookings
+POST  /api/admin/bookings/{id}/reschedule
 GET   /api/admin/reports
 GET   /api/admin/reports/{id}
 PATCH /api/admin/reports/{id}/resolve

@@ -228,6 +228,8 @@ Route::middleware(['auth:sanctum', 'active', 'admin'])->prefix('admin')->group(f
     // Booking oversight
     Route::get('bookings', [AdminBookingController::class, 'index']);
     Route::get('bookings/{id}', [AdminBookingController::class, 'show']);
+    Route::post('bookings', [AdminBookingController::class, 'store']);
+    Route::post('bookings/{id}/reschedule', [AdminBookingController::class, 'reschedule']);
 
     // Report management
     Route::get('reports', [AdminReportController::class, 'index']);

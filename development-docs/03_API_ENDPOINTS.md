@@ -1652,6 +1652,45 @@ Response 200:
 
 ---
 
+## Admin Create Booking for a Client
+
+```
+POST /api/admin/bookings
+(Admin only)
+
+Request body:
+{
+    "client_id": 12,
+    "worker_id": 34,
+    "job_post_id": 56,
+    "service_category_id": 2,
+    "scheduled_at": "2026-10-20T09:00:00+08:00",
+    "notes": "Please call before arriving"
+}
+
+job_post_id must be an active post owned by the selected worker and match the service category.
+Creates a pending booking linked to the job post. The worker must still accept or decline it.
+Both the client and worker receive in-app and push notifications.
+The action is recorded in admin_audit_logs.
+```
+
+## Admin Reschedule Pending Booking
+
+```
+POST /api/admin/bookings/{bookingId}/reschedule
+(Admin only; pending bookings only)
+
+Request body:
+{
+    "scheduled_at": "2026-10-22T10:00:00+08:00"
+}
+
+Both the client and worker receive in-app and push notifications.
+The previous and updated schedule are recorded in admin_audit_logs.
+```
+
+---
+
 ## I10. Get All Reports / Disputes
 
 ```

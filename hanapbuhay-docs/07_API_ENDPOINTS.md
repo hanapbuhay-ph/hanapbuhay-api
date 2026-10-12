@@ -2392,6 +2392,71 @@ Response 200:
 
 ---
 
+### Admin Create Booking for a Client
+```
+POST /api/admin/bookings
+(Admin only)
+
+Request Body:
+{
+    "client_id": 12,
+    "worker_id": 34,
+    "job_post_id": 56,
+    "service_category_id": 2,
+    "scheduled_at": "2026-10-20T09:00:00+08:00",
+    "notes": "Please call before arriving"
+}
+
+Response 201:
+{
+    "success": true,
+    "message": "Booking created for client.",
+    "data": {
+        "id": 1,
+        "booking_code": "HB-2026-00001",
+        "status": "pending",
+        "scheduled_at": "2026-10-20T01:00:00+00:00"
+    }
+}
+
+Side Effects:
+  job_post_id must be an active post owned by the selected worker and match the service category
+  Creates a pending booking linked to the job post; the worker must still accept or decline it
+  Sends in-app and push notifications to both client and worker
+  Logged in admin_audit_logs
+```
+
+---
+
+### Admin Reschedule Pending Booking
+```
+POST /api/admin/bookings/{bookingId}/reschedule
+(Admin only; pending bookings only)
+
+Request Body:
+{
+    "scheduled_at": "2026-10-22T10:00:00+08:00"
+}
+
+Response 200:
+{
+    "success": true,
+    "message": "Booking rescheduled.",
+    "data": {
+        "id": 1,
+        "booking_code": "HB-2026-00001",
+        "status": "pending",
+        "scheduled_at": "2026-10-22T02:00:00+00:00"
+    }
+}
+
+Side Effects:
+  Sends in-app and push notifications to both client and worker
+  Logged in admin_audit_logs with the previous and updated schedule
+```
+
+---
+
 ### K11. Force Cancel Booking (Admin)
 ```
 POST /api/admin/bookings/{bookingId}/cancel

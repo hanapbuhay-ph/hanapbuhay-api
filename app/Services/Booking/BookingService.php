@@ -21,9 +21,25 @@ class BookingService
             'job_post_id' => $data['job_post_id'] ?? null,
             'scheduled_at' => $data['scheduled_at'],
             'notes' => $data['notes'] ?? null,
+            'status' => 'pending',
         ]);
 
         return $booking->load(['worker.barangay', 'serviceCategory']);
+    }
+
+    public function createForAdmin(array $data, User $client): Booking
+    {
+        $booking = $this->create($data, $client->id)
+            ->load(['client', 'worker']);
+
+        $this->notifyBookingParticipants(
+            $booking,
+            'Booking Created',
+            "Booking {$booking->booking_code} has been scheduled by the HanapBuhay admin and is awaiting the worker's response.",
+            'booking_updated',
+        );
+
+        return $booking;
     }
 
     public function list(User $user, ?string $status): LengthAwarePaginator
@@ -227,5 +243,47 @@ class BookingService
         );
 
         return $fresh;
+    }
+
+    public function reschedulePendingByAdmin(Booking $booking, \DateTimeInterface $scheduledAt): JsonResponse|Booking
+    {
+        $updated = Booking::query()
+            ->whereKey($booking->id)
+            ->where('status', 'pending')
+            ->update([
+                'scheduled_at' => $scheduledAt,
+                'updated_at' => now(),
+            ]);
+
+        if ($updated === 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only pending bookings can be rescheduled by an admin.',
+            ], 422);
+        }
+
+        $fresh = $booking->fresh(['client.barangay', 'worker.barangay', 'serviceCategory']);
+        $this->notifyBookingParticipants(
+            $fresh,
+            'Booking Rescheduled',
+            "Booking {$fresh->booking_code} has been rescheduled. Open the booking to review the updated schedule.",
+            'booking_rescheduled',
+        );
+
+        return $fresh;
+    }
+
+    private function notifyBookingParticipants(Booking $booking, string $title, string $body, string $type): void
+    {
+        foreach ([$booking->client, $booking->worker] as $user) {
+            $data = ['booking_id' => $booking->id];
+            $this->notifications->notify($user, $title, $body, $type, $data);
+            $this->notifications->sendPush(
+                $user,
+                $title,
+                $body,
+                ['booking_id' => (string) $booking->id, 'type' => $type],
+            );
+        }
     }
 }
