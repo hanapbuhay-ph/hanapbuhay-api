@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\Admin\AdminService;
 use App\Services\Auth\AccountDeletionService;
+use App\Services\SecurityEventLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -14,6 +15,7 @@ class AdminDeletionController extends Controller
     public function __construct(
         private readonly AccountDeletionService $deletionService,
         private readonly AdminService $adminService,
+        private readonly SecurityEventLogger $securityEventLogger,
     ) {}
 
     /**
@@ -71,6 +73,30 @@ class AdminDeletionController extends Controller
             ], 422);
         }
 
+        if ($user->isSuperAdmin() && ! $request->user()->isSuperAdmin()) {
+            $this->securityEventLogger->record(
+                'protected_account_deletion_denied',
+                'failure',
+                $request->user(),
+                $user->id,
+                [],
+                $request->ip(),
+                $request->userAgent(),
+            );
+
+            return response()->json([
+                'success' => false,
+                'message' => 'The super admin account cannot be deleted through a deletion request.',
+            ], 403);
+        }
+
+        $auditDetails = [
+            'name' => $user->name,
+            'email' => $user->email,
+            'role' => $user->role,
+            'processed_at' => now()->toIso8601String(),
+        ];
+
         $this->deletionService->processDeletion($user);
 
         $this->adminService->audit(
@@ -78,7 +104,7 @@ class AdminDeletionController extends Controller
             'process_account_deletion',
             'User',
             $id,
-            ['processed_at' => now()->toIso8601String()],
+            $auditDetails,
         );
 
         return response()->json([

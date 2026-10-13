@@ -37,11 +37,16 @@ class AdminService
     {
         AdminAuditLog::create([
             'admin_id' => $admin->id,
+            'actor_name' => $admin->name,
+            'actor_email' => $admin->email,
+            'category' => 'admin_activity',
+            'outcome' => 'success',
             'action' => $action,
             'target_type' => $targetType,
             'target_id' => $targetId,
             'details' => $details ?: null,
-            'ip_address' => $ip,
+            'ip_address' => $ip ?? request()->ip(),
+            'user_agent' => mb_substr((string) request()->userAgent(), 0, 1024) ?: null,
         ]);
     }    // ──────────────────────────────────────────────────────────────────────────
     // SECTION 1 — VERIFICATION MANAGEMENT
@@ -98,6 +103,9 @@ class AdminService
             default => 'rejected',
         };
 
+        $previousStatus = $workerProfile->verification_status;
+        $previousTrustTier = $workerProfile->trust_tier;
+
         DB::transaction(function () use ($admin, $workerProfile, $newStatus, $adminNotes): void {
             $updateData = [
                 'verification_status' => $newStatus,
@@ -122,6 +130,15 @@ class AdminService
                 'remarks' => $adminNotes,
             ]);
         });
+
+        $this->audit($admin, 'review_verification', 'WorkerProfile', $workerProfile->id, [
+            'worker_id' => $workerProfile->user_id,
+            'previous_status' => $previousStatus,
+            'new_status' => $newStatus,
+            'previous_trust_tier' => $previousTrustTier,
+            'new_trust_tier' => $newStatus === 'approved' ? 'verified' : $previousTrustTier,
+            'admin_notes' => $adminNotes,
+        ]);
 
         // Reload the user relationship for the push notification
         $workerProfile->load('user');
@@ -331,7 +348,15 @@ class AdminService
             return $user;
         });
 
-        $this->audit($admin, 'create_user', 'User', $user->id);
+        $this->audit($admin, 'create_user', 'User', $user->id, [
+            'name' => $user->name,
+            'email' => $user->email,
+            'role' => $user->role,
+            'mobile_number' => $user->mobile_number,
+            'barangay_id' => $user->barangay_id,
+            'is_active' => $user->is_active,
+            'password_set' => true,
+        ]);
         event(new AdminEntityChanged('user', 'created', (int) $user->id, [
             'name' => $user->name,
             'email' => $user->email,
@@ -349,6 +374,13 @@ class AdminService
 
         $user = User::findOrFail($userId);
         $this->assertSuperAdminManageableBy($user, $admin);
+        $previousRole = $user->role;
+        $previousValues = [];
+        foreach (array_keys($attributes) as $field) {
+            if (! in_array($field, ['password', 'password_confirmation'], true)) {
+                $previousValues[$field] = $user->getRawOriginal($field);
+            }
+        }
         $role = $attributes['role'] ?? $user->role;
         $updateData = collect($attributes)->except('password')->all();
 
@@ -367,7 +399,20 @@ class AdminService
             }
         });
 
-        $this->audit($admin, 'update_user', 'User', $user->id);
+        $changes = $this->changesFor($previousValues, $user->getAttributes(), array_keys($previousValues));
+        $this->audit($admin, 'update_user', 'User', $user->id, [
+            'changes' => $changes,
+            'password_changed' => ! empty($attributes['password']),
+        ]);
+        if ($previousRole !== $user->role) {
+            $this->securityEvent('user_role_changed', 'success', $admin, $user, [
+                'previous_role' => $previousRole,
+                'new_role' => $user->role,
+            ]);
+        }
+        if (! empty($attributes['password'])) {
+            $this->securityEvent('user_password_changed_by_admin', 'success', $admin, $user);
+        }
         event(new AdminEntityChanged('user', 'updated', (int) $user->id, [
             'name' => $user->name,
             'email' => $user->email,
@@ -386,8 +431,14 @@ class AdminService
         $user = User::findOrFail($userId);
         $this->assertSuperAdminManageableBy($user, $admin);
         $userIdForEvent = (int) $user->id;
+        $userDetails = [
+            'name' => $user->name,
+            'email' => $user->email,
+            'role' => $user->role,
+        ];
+        $this->securityEvent('user_deleted_by_admin', 'success', $admin, $user);
         $user->delete();
-        $this->audit($admin, 'delete_user', 'User', $userIdForEvent);
+        $this->audit($admin, 'delete_user', 'User', $userIdForEvent, $userDetails);
         event(new AdminEntityChanged('user', 'deleted', $userIdForEvent, [
             'email' => $user->email,
             'role' => $user->role,
@@ -409,14 +460,77 @@ class AdminService
 
         $user = User::findOrFail($userId);
         $this->assertSuperAdminManageableBy($user, $admin);
+        $previousActive = $user->is_active;
         $user->update(['is_active' => ! $user->is_active]);
+        $this->audit($admin, $user->is_active ? 'user_reactivate' : 'user_suspend', 'User', $user->id, [
+            'changes' => [
+                'is_active' => [
+                    'from' => $previousActive,
+                    'to' => $user->is_active,
+                ],
+            ],
+        ]);
+        $this->securityEvent(
+            $user->is_active ? 'user_reactivated' : 'user_suspended',
+            'success',
+            $admin,
+            $user,
+        );
 
         return $user;
+    }
+
+    private function securityEvent(
+        string $action,
+        string $outcome,
+        ?User $actor,
+        ?User $target,
+        array $details = [],
+    ): void {
+        app(\App\Services\SecurityEventLogger::class)->record(
+            $action,
+            $outcome,
+            $actor,
+            $target?->id,
+            $details,
+            request()->ip(),
+            request()->userAgent(),
+        );
+    }
+
+    private function changesFor(array $before, array $after, array $fields): array
+    {
+        $changes = [];
+
+        foreach ($fields as $field) {
+            if (! array_key_exists($field, $after)) {
+                continue;
+            }
+
+            $oldValue = $before[$field] ?? null;
+            $newValue = $after[$field];
+            if (json_encode($oldValue) === json_encode($newValue)) {
+                continue;
+            }
+
+            $changes[$field] = [
+                'from' => $oldValue,
+                'to' => $newValue,
+            ];
+        }
+
+        return $changes;
     }
 
     private function assertSuperAdminManageableBy(User $target, User $admin): void
     {
         if ($target->isSuperAdmin() && ! $admin->isSuperAdmin()) {
+            $this->securityEvent(
+                'protected_account_change_denied',
+                'failure',
+                $admin,
+                $target,
+            );
             throw new BusinessRuleException(
                 'The super admin account can only be managed by the super admin.',
                 403
@@ -532,6 +646,7 @@ class AdminService
     public function resolveReport(int $id, string $status, ?string $adminNotes, ?string $action = null, ?string $resolutionAction = null, ?int $resolvedById = null): Report
     {
         $report = Report::with(['reportedUser.workerProfile'])->findOrFail($id);
+        $previousStatus = $report->status;
 
         // Normalise: map spec resolution_action → internal action
         $effectiveAction = $action;
@@ -570,8 +685,35 @@ class AdminService
                     'warn_user' => null,
                     default => null,
                 };
+
+                if ($effectiveAction === 'suspend_user' && $reportedUser !== null) {
+                    $this->securityEvent(
+                        'user_suspended',
+                        'success',
+                        $resolvedById === null ? null : User::find($resolvedById),
+                        $reportedUser,
+                        ['source' => 'report_resolution', 'report_id' => $report->id],
+                    );
+                }
             }
         });
+
+        if ($resolvedById !== null) {
+            $this->audit(
+                User::findOrFail($resolvedById),
+                'resolve_report',
+                'Report',
+                $report->id,
+                [
+                    'reason' => $report->reason,
+                    'previous_status' => $previousStatus,
+                    'new_status' => $status,
+                    'resolution_action' => $status === 'resolved' ? $storedResolutionAction : null,
+                    'reported_user_id' => $report->reported_user_id,
+                    'admin_notes' => $adminNotes,
+                ],
+            );
+        }
 
         return $report->fresh();
     }
@@ -714,6 +856,7 @@ class AdminService
         ]);
 
         $this->audit($admin, 'update_trust_tier', 'WorkerProfile', $profile->id, [
+            'worker_id' => $profile->user_id,
             'previous_tier' => $previous,
             'new_tier' => $tier,
             'remarks' => $remarks,
@@ -765,8 +908,12 @@ class AdminService
         ]);
 
         $this->audit($admin, 'force_cancel_booking', 'Booking', $booking->id, [
+            'booking_code' => $booking->booking_code,
+            'client_id' => $booking->client_id,
+            'worker_id' => $booking->worker_id,
             'reason' => $reason,
             'previous_status' => $booking->getOriginal('status'),
+            'new_status' => 'cancelled',
         ]);
 
         // Notify both parties
@@ -882,6 +1029,8 @@ class AdminService
         DB::transaction(function () use ($rating, $admin, $reason): void {
             $this->audit($admin, 'delete_rating', 'RatingReview', $rating->id, [
                 'score' => $rating->score,
+                'comment' => $rating->comment,
+                'rated_by' => $rating->rated_by,
                 'rated_user' => $rating->rated_user,
                 'booking_id' => $rating->booking_id,
                 'reason' => $reason,
@@ -908,7 +1057,17 @@ class AdminService
     /**
      * Return paginated audit logs, optionally filtered by admin_id, action, target_type, date range.
      */
-    public function listAuditLogs(?int $adminId, ?string $action, ?string $targetType = null, ?string $dateFrom = null, ?string $dateTo = null, ?string $adminName = null): LengthAwarePaginator
+    public function listAuditLogs(
+        ?int $adminId,
+        ?string $action,
+        ?string $targetType = null,
+        ?string $dateFrom = null,
+        ?string $dateTo = null,
+        ?string $adminName = null,
+        ?string $category = null,
+        ?string $outcome = null,
+        ?string $ipAddress = null,
+    ): LengthAwarePaginator
     {
         $query = AdminAuditLog::query()
             ->with('admin:id,name,email')
@@ -919,8 +1078,13 @@ class AdminService
         }
 
         if ($adminName !== null) {
-            $query->whereHas('admin', fn ($adminQuery) => $adminQuery->where('name', 'like', "%{$adminName}%")
-            );
+            $query->where(function ($subQuery) use ($adminName): void {
+                $subQuery->where('actor_name', 'like', "%{$adminName}%")
+                    ->orWhere('actor_email', 'like', "%{$adminName}%")
+                    ->orWhereHas('admin', fn ($adminQuery) => $adminQuery
+                        ->where('name', 'like', "%{$adminName}%")
+                        ->orWhere('email', 'like', "%{$adminName}%"));
+            });
         }
 
         if ($action !== null) {
@@ -939,17 +1103,42 @@ class AdminService
             $query->whereDate('created_at', '<=', $dateTo);
         }
 
+        if ($category !== null) {
+            $query->where('category', $category);
+        }
+
+        if ($outcome !== null) {
+            $query->where('outcome', $outcome);
+        }
+
+        if ($ipAddress !== null) {
+            $query->where('ip_address', 'like', "%{$ipAddress}%");
+        }
+
         return $query->paginate(25);
     }
 
-    public function deleteAuditLog(int|string $id): void
+    public function deleteAuditLog(int|string $id, User $admin): void
     {
+        $this->assertCanDeleteAuditLogs($admin);
         AdminAuditLog::findOrFail($id)->delete();
     }
 
-    public function deleteAllAuditLogs(): void
+    public function deleteAllAuditLogs(User $admin): int
     {
-        AdminAuditLog::query()->delete();
+        $this->assertCanDeleteAuditLogs($admin);
+
+        return AdminAuditLog::query()->delete();
+    }
+
+    private function assertCanDeleteAuditLogs(User $admin): void
+    {
+        if (! $admin->isSuperAdmin()) {
+            throw new BusinessRuleException(
+                'Only the super admin can delete audit and security logs.',
+                403,
+            );
+        }
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -976,6 +1165,8 @@ class AdminService
 
         $this->audit($admin, 'create_category', 'ServiceCategory', $category->id, [
             'name' => $category->name,
+            'icon' => $category->icon,
+            'is_active' => $category->is_active,
         ]);
 
         return $category;
@@ -990,9 +1181,12 @@ class AdminService
     {
         $category = ServiceCategory::findOrFail($categoryId);
 
+        $before = $category->getAttributes();
         $category->update(array_filter($data, fn ($v) => $v !== null));
 
-        $this->audit($admin, 'update_category', 'ServiceCategory', $category->id, $data);
+        $this->audit($admin, 'update_category', 'ServiceCategory', $category->id, [
+            'changes' => $this->changesFor($before, $category->getAttributes(), array_keys($data)),
+        ]);
 
         return $category->fresh();
     }
@@ -1061,9 +1255,12 @@ class AdminService
             $data['code'] = preg_replace('/[^a-z0-9_]/', '', strtolower(trim((string) $data['code'])));
         }
 
+        $before = $reason->getAttributes();
         $reason->update(array_filter($data, fn ($v) => $v !== null));
 
-        $this->audit($admin, 'update_report_reason', 'ReportReason', $reason->id, $data);
+        $this->audit($admin, 'update_report_reason', 'ReportReason', $reason->id, [
+            'changes' => $this->changesFor($before, $reason->getAttributes(), array_keys($data)),
+        ]);
 
         return $reason->fresh();
     }
@@ -1151,8 +1348,10 @@ class AdminService
 
         $this->audit($admin, 'create_announcement', 'Announcement', $announcement->id, [
             'title' => $announcement->title,
+            'body' => $announcement->body,
             'status' => $announcement->status,
             'target_audience' => $announcement->target_audience,
+            'expires_at' => $announcement->expires_at?->toIso8601String(),
         ]);
 
         if ($announcement->status === 'published') {
@@ -1177,6 +1376,7 @@ class AdminService
     public function updateAnnouncement(User $admin, int|string $announcementId, array $attributes): Announcement
     {
         $announcement = Announcement::findOrFail($announcementId);
+        $before = $announcement->getAttributes();
         $announcement->fill($attributes);
 
         if (isset($attributes['status'])) {
@@ -1185,9 +1385,12 @@ class AdminService
 
         $announcement->save();
 
+        $changedFields = array_keys($attributes);
+        if (array_key_exists('status', $attributes)) {
+            $changedFields[] = 'is_active';
+        }
         $this->audit($admin, 'update_announcement', 'Announcement', $announcement->id, [
-            'title' => $announcement->title,
-            'status' => $announcement->status,
+            'changes' => $this->changesFor($before, $announcement->getAttributes(), array_unique($changedFields)),
         ]);
 
         return $announcement->fresh();
@@ -1196,11 +1399,12 @@ class AdminService
     public function deleteAnnouncement(User $admin, int|string $announcementId): void
     {
         $announcement = Announcement::findOrFail($announcementId);
-        $announcement->delete();
-
         $this->audit($admin, 'delete_announcement', 'Announcement', (int) $announcementId, [
             'title' => $announcement->title,
+            'status' => $announcement->status,
+            'target_audience' => $announcement->target_audience,
         ]);
+        $announcement->delete();
     }
 
     /**
@@ -1221,6 +1425,9 @@ class AdminService
 
         $this->audit($admin, 'post_announcement', 'Announcement', $announcement->id, [
             'title' => $title,
+            'body' => $body,
+            'status' => $announcement->status,
+            'target_audience' => $announcement->target_audience,
             'expires_at' => $expiresAt,
         ]);
 
@@ -1321,10 +1528,12 @@ class AdminService
     public function createJobPost(User $admin, array $data): JobPost
     {
         $profile = WorkerProfile::with('user')->findOrFail($data['worker_profile_id']);
-        $profile->jobPosts()
+        $replacedPostIds = $profile->jobPosts()
             ->where('service_category_id', $data['service_category_id'])
             ->get()
-            ->each(fn (JobPost $existingPost) => $existingPost->delete());
+            ->each(fn (JobPost $existingPost) => $existingPost->delete())
+            ->pluck('id')
+            ->all();
 
         $post = $profile->jobPosts()->create([
             'service_category_id' => $data['service_category_id'],
@@ -1339,7 +1548,14 @@ class AdminService
 
         $this->audit($admin, 'create_job_post', 'JobPost', $post->id, [
             'worker_profile_id' => $profile->id,
+            'service_category_id' => $post->service_category_id,
             'title' => $post->title,
+            'description' => $post->description,
+            'rate_amount' => $post->rate_amount,
+            'rate_type' => $post->rate_type,
+            'is_available' => $post->is_available,
+            'is_active' => $post->is_active,
+            'replaced_job_post_ids' => $replacedPostIds,
         ]);
         $this->notifyWorkerOfJobPostChange($profile->user, $post, 'created');
 
@@ -1349,6 +1565,7 @@ class AdminService
     public function updateJobPost(User $admin, int $postId, array $data): JobPost
     {
         $post = JobPost::withTrashed()->with('workerProfile.user')->findOrFail($postId);
+        $before = $post->getRawOriginal();
         $previousCategoryId = $post->service_category_id;
         $post->update([
             'service_category_id' => $data['service_category_id'],
@@ -1366,7 +1583,7 @@ class AdminService
 
         $this->audit($admin, 'update_job_post', 'JobPost', $post->id, [
             'worker_profile_id' => $post->worker_profile_id,
-            'title' => $post->title,
+            'changes' => $this->changesFor($before, $post->getAttributes(), array_keys($data)),
         ]);
         $this->notifyWorkerOfJobPostChange($post->workerProfile->user, $post, 'updated');
 

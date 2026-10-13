@@ -9,6 +9,7 @@ use App\Http\Requests\Admin\ToggleUserStatusRequest;
 use App\Http\Requests\Admin\UpdateAdminUserRequest;
 use App\Models\User;
 use App\Services\Admin\AdminService;
+use App\Services\SecurityEventLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -16,6 +17,7 @@ class AdminUserController extends Controller
 {
     public function __construct(
         private readonly AdminService $adminService,
+        private readonly SecurityEventLogger $securityEventLogger,
     ) {}
 
     /**
@@ -388,16 +390,42 @@ class AdminUserController extends Controller
 
         $user = User::findOrFail($id);
         if ($user->isSuperAdmin() && ! $admin->isSuperAdmin()) {
+            $this->securityEventLogger->record(
+                'protected_account_status_change_denied',
+                'failure',
+                $admin,
+                $user->id,
+                [],
+                $request->ip(),
+                $request->userAgent(),
+            );
             return response()->json([
                 'success' => false,
                 'message' => 'The super admin account can only be managed by the super admin.',
             ], 403);
         }
 
+        $previousActive = $user->is_active;
         $newActive = ($action === 'reactivate');
         $user->update(['is_active' => $newActive]);
 
+        $this->securityEventLogger->record(
+            $newActive ? 'user_reactivated' : 'user_suspended',
+            'success',
+            $admin,
+            $user->id,
+            array_filter(['reason' => $reason]),
+            $request->ip(),
+            $request->userAgent(),
+        );
+
         $this->adminService->audit($admin, "user_{$action}", 'User', $user->id, array_filter([
+            'changes' => [
+                'is_active' => [
+                    'from' => $previousActive,
+                    'to' => $newActive,
+                ],
+            ],
             'reason' => $reason,
         ]));
 

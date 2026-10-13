@@ -7,6 +7,7 @@ use App\Http\Requests\Auth\CompleteProfileRequest;
 use App\Mail\OtpMail;
 use App\Models\User;
 use App\Services\Auth\AuthService;
+use App\Services\SecurityEventLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,7 +19,10 @@ use Throwable;
 
 class GoogleAuthController extends Controller
 {
-    public function __construct(private readonly AuthService $authService) {}
+    public function __construct(
+        private readonly AuthService $authService,
+        private readonly SecurityEventLogger $securityEventLogger,
+    ) {}
 
     /**
      * Called by Flutter after it obtains a Google ID token via google_sign_in.
@@ -54,8 +58,17 @@ class GoogleAuthController extends Controller
             }
         } catch (Throwable $e) {
             Log::warning('Google token verification failed', [
-                'error' => $e->getMessage(),
+                'error_type' => $e::class,
             ]);
+            $this->securityEventLogger->record(
+                'google_login',
+                'failure',
+                null,
+                null,
+                ['reason' => 'invalid_token'],
+                $request->ip(),
+                $request->userAgent(),
+            );
 
             return response()->json([
                 'success' => false,
@@ -122,6 +135,15 @@ class GoogleAuthController extends Controller
 
             if ($user->two_factor_enabled) {
                 $code = $this->authService->resendLoginOtp($user->email);
+                $this->securityEventLogger->record(
+                    'google_login_otp_challenge',
+                    'success',
+                    $user,
+                    $user->id,
+                    ['is_new_user' => $isNewUser],
+                    $request->ip(),
+                    $request->userAgent(),
+                );
                 Mail::to($user->email)->queue(
                     new OtpMail($code, 'Your Login Verification Code')
                 );
@@ -142,6 +164,15 @@ class GoogleAuthController extends Controller
                 $request->input('device_name'),
                 $request->ip(),
             );
+            $this->securityEventLogger->record(
+                'google_login',
+                'success',
+                $user,
+                $user->id,
+                ['is_new_user' => $isNewUser],
+                $request->ip(),
+                $request->userAgent(),
+            );
 
             return response()->json([
                 'success' => true,
@@ -153,6 +184,17 @@ class GoogleAuthController extends Controller
                 ],
             ], $isNewUser ? 201 : 200);
         } catch (AccessDeniedHttpException $e) {
+            $email = $tokenInfo['email'] ?? null;
+            $this->securityEventLogger->record(
+                'google_login',
+                'failure',
+                null,
+                $email === null ? null : User::where('email', $email)->value('id'),
+                array_filter(['email' => $email, 'reason' => 'access_denied']),
+                $request->ip(),
+                $request->userAgent(),
+            );
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -160,8 +202,18 @@ class GoogleAuthController extends Controller
         } catch (Throwable $e) {
             Log::error('Google sign-in failed', [
                 'email' => $tokenInfo['email'] ?? 'unknown',
-                'error' => $e->getMessage(),
+                'error_type' => $e::class,
             ]);
+            $email = $tokenInfo['email'] ?? null;
+            $this->securityEventLogger->record(
+                'google_login',
+                'failure',
+                null,
+                $email === null ? null : User::where('email', $email)->value('id'),
+                array_filter(['email' => $email, 'reason' => 'sign_in_error']),
+                $request->ip(),
+                $request->userAgent(),
+            );
 
             return response()->json([
                 'success' => false,

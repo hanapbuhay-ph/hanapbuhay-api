@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Barangay;
+use App\Models\AdminAuditLog;
 use App\Models\Booking;
 use App\Models\JobPost;
 use App\Models\RatingReview;
@@ -146,6 +147,13 @@ it('admin approves a worker verification', function () use ($makeAdmin) {
     expect($profile->verificationDocuments()->where('status', 'approved')->exists())->toBeTrue();
     expect(VerificationHistory::where('worker_profile_id', $profile->id)
         ->where('status', 'approved')->where('changed_by', $admin->id)->exists())->toBeTrue();
+    expect(AdminAuditLog::where('action', 'review_verification')
+        ->where('target_id', $profile->id)
+        ->where('outcome', 'success')
+        ->where('ip_address', request()->ip())
+        ->whereJsonContains('details->previous_status', 'pending')
+        ->whereJsonContains('details->new_status', 'approved')
+        ->exists())->toBeTrue();
 });
 
 it('admin rejects a worker verification', function () use ($makeAdmin) {
@@ -267,6 +275,9 @@ it('ordinary admins cannot update, suspend, or delete the super admin account', 
         ->deleteJson("/api/admin/users/{$superAdmin->id}")
         ->assertForbidden();
 
+    expect(AdminAuditLog::where('action', 'protected_account_change_denied')->count())->toBe(3)
+        ->and(AdminAuditLog::where('action', 'protected_account_status_change_denied')->count())->toBe(1);
+
     $superAdmin->refresh();
     expect($superAdmin->name)->toBe('Protected Super Admin')
         ->and($superAdmin->is_active)->toBeTrue()
@@ -325,6 +336,8 @@ it('deletion processing cannot remove the super admin account', function () use 
     $this->actingAs($admin)
         ->postJson("/api/admin/deletion-requests/{$superAdmin->id}/process")
         ->assertForbidden();
+
+    expect(AdminAuditLog::where('action', 'protected_account_deletion_denied')->count())->toBe(1);
 
     expect($superAdmin->fresh())->not->toBeNull();
 });
@@ -581,6 +594,43 @@ it('admin can change a user password and receive a successful update response', 
     expect(Hash::check('NewPassword123', $user->fresh()->password))->toBeTrue();
 });
 
+it('user update audit records outcome IP and only the changed field values', function () use ($makeAdmin) {
+    $admin = $makeAdmin();
+    $user = User::factory()->create([
+        'role' => 'client',
+        'name' => 'Original Name',
+        'email' => 'original@example.com',
+        'password' => 'OldPassword123',
+    ]);
+
+    $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.25'])
+        ->actingAs($admin)
+        ->patchJson("/api/admin/users/{$user->id}", [
+            'name' => 'Updated Name',
+            'email' => 'updated@example.com',
+            'password' => 'NewPassword123',
+            'password_confirmation' => 'NewPassword123',
+        ])
+        ->assertOk();
+
+    $log = AdminAuditLog::query()
+        ->where('action', 'update_user')
+        ->where('target_id', $user->id)
+        ->firstOrFail();
+
+    expect($log->category)->toBe('admin_activity')
+        ->and($log->outcome)->toBe('success')
+        ->and($log->ip_address)->toBe('203.0.113.25')
+        ->and($log->details)->toMatchArray([
+            'changes' => [
+                'name' => ['from' => 'Original Name', 'to' => 'Updated Name'],
+                'email' => ['from' => 'original@example.com', 'to' => 'updated@example.com'],
+            ],
+            'password_changed' => true,
+        ])
+        ->and(json_encode($log->details))->not->toContain('NewPassword123');
+});
+
 it('admin cannot delete their own account', function () use ($makeAdmin) {
     $admin = $makeAdmin();
 
@@ -801,6 +851,12 @@ it('admin resolves a report and status is resolved in DB', function () use ($mak
 
     expect($report->fresh()->status)->toBe('resolved');
     expect($report->fresh()->admin_remarks)->toBe('Issue has been addressed.');
+    expect(AdminAuditLog::where('action', 'resolve_report')
+        ->where('target_id', $report->id)
+        ->where('outcome', 'success')
+        ->whereJsonContains('details->previous_status', $report->getOriginal('status'))
+        ->whereJsonContains('details->new_status', 'resolved')
+        ->exists())->toBeTrue();
 });
 
 it('admin dismisses a report and status is dismissed in DB', function () use ($makeAdmin, $makeReport) {

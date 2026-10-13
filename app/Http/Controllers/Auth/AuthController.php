@@ -13,8 +13,10 @@ use App\Http\Requests\Auth\ResetPasswordRequest;
 use App\Http\Requests\Auth\UpdateProfileRequest;
 use App\Http\Requests\Auth\VerifyResetOtpRequest;
 use App\Mail\OtpMail;
+use App\Models\User;
 use App\Services\Auth\AccountDeletionService;
 use App\Services\Auth\AuthService;
+use App\Services\SecurityEventLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
@@ -25,6 +27,7 @@ class AuthController extends Controller
     public function __construct(
         private readonly AuthService $authService,
         private readonly AccountDeletionService $deletionService,
+        private readonly SecurityEventLogger $securityEventLogger,
     ) {
     }
 
@@ -34,6 +37,15 @@ class AuthController extends Controller
             $request->validated('email'),
             $request->validated('reset_token'),
             $request->validated('password')
+        );
+        $this->securityEventLogger->record(
+            'password_reset',
+            $success ? 'success' : 'failure',
+            null,
+            User::where('email', $request->validated('email'))->value('id'),
+            ['email' => $request->validated('email')],
+            $request->ip(),
+            $request->userAgent(),
         );
 
         if (! $success) {
@@ -54,6 +66,15 @@ class AuthController extends Controller
         $resetToken = $this->authService->verifyResetOtp(
             $request->validated('email'),
             $request->validated('code')
+        );
+        $this->securityEventLogger->record(
+            'password_reset_otp_verified',
+            $resetToken === null ? 'failure' : 'success',
+            null,
+            User::where('email', $request->validated('email'))->value('id'),
+            ['email' => $request->validated('email')],
+            $request->ip(),
+            $request->userAgent(),
         );
 
         if ($resetToken === null) {
@@ -149,6 +170,15 @@ class AuthController extends Controller
             );
 
             if ($result['requires_otp'] ?? false) {
+                $this->securityEventLogger->record(
+                    'login_otp_challenge',
+                    'success',
+                    $result['user'],
+                    $result['user']->id,
+                    [],
+                    $request->ip(),
+                    $request->userAgent(),
+                );
                 Mail::to($request->validated('email'))->queue(
                     new OtpMail($result['otp'], 'Your Login Verification Code')
                 );
@@ -160,6 +190,16 @@ class AuthController extends Controller
                 ]);
             }
 
+            $this->securityEventLogger->record(
+                'login',
+                'success',
+                $result['user'],
+                $result['user']->id,
+                [],
+                $request->ip(),
+                $request->userAgent(),
+            );
+
             return response()->json([
                 'success' => true,
                 'message' => 'Login successful.',
@@ -169,11 +209,33 @@ class AuthController extends Controller
                 ],
             ]);
         } catch (InvalidCredentialsException $e) {
+            $email = $request->validated('email');
+            $this->securityEventLogger->record(
+                'login',
+                'failure',
+                null,
+                User::where('email', $email)->value('id'),
+                ['email' => $email, 'reason' => 'invalid_credentials'],
+                $request->ip(),
+                $request->userAgent(),
+            );
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
             ], 401);
         } catch (EmailNotVerifiedException $e) {
+            $email = $request->validated('email');
+            $this->securityEventLogger->record(
+                'login',
+                'failure',
+                null,
+                User::where('email', $email)->value('id'),
+                ['email' => $email, 'reason' => 'email_not_verified'],
+                $request->ip(),
+                $request->userAgent(),
+            );
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -194,6 +256,15 @@ class AuthController extends Controller
             $validated['code'],
             $validated['device_name'] ?? null,
             $request->ip(),
+        );
+        $this->securityEventLogger->record(
+            'login_otp_verification',
+            $result === null ? 'failure' : 'success',
+            $result['user'] ?? null,
+            User::where('email', $validated['email'])->value('id'),
+            $result === null ? ['email' => $validated['email'], 'reason' => 'invalid_or_expired_code'] : [],
+            $request->ip(),
+            $request->userAgent(),
         );
 
         if ($result === null) {
@@ -272,6 +343,15 @@ class AuthController extends Controller
             $request->user(),
             $request->input('current_password'),
             $request->validated('password'),
+        );
+        $this->securityEventLogger->record(
+            'password_change',
+            $result['success'] ? 'success' : 'failure',
+            $request->user(),
+            $request->user()->id,
+            $result['success'] ? [] : ['reason' => 'current_password_invalid'],
+            $request->ip(),
+            $request->userAgent(),
         );
 
         if (! $result['success']) {

@@ -11,11 +11,16 @@ class AdminAuditLog extends Model
     use HasFactory;
     protected $fillable = [
         'admin_id',
+        'actor_name',
+        'actor_email',
+        'category',
+        'outcome',
         'action',
         'target_type',
         'target_id',
         'details',
         'ip_address',
+        'user_agent',
     ];
 
     protected function casts(): array

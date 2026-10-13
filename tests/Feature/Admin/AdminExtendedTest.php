@@ -386,7 +386,7 @@ it('admin can list audit logs with pagination', function () {
         ->assertJsonPath('message', 'Audit logs retrieved.')
         ->assertJsonStructure([
             'data' => [
-                'logs'       => [['id', 'action', 'target_type', 'target_id', 'admin', 'created_at']],
+                'logs'       => [['id', 'category', 'outcome', 'action', 'target_type', 'target_id', 'admin', 'created_at']],
                 'pagination' => ['current_page', 'per_page', 'total', 'last_page'],
             ],
         ]);
@@ -406,16 +406,56 @@ it('admin can filter audit logs by admin_id', function () {
     expect($response->json('data.pagination.total'))->toBe(2);
 });
 
-it('admin can delete all audit logs', function () {
+it('admin can filter security logs by category outcome IP and actor identity', function () {
+    $admin = makeAdmin();
+    $logger = app(\App\Services\SecurityEventLogger::class);
+    $logger->record('login', 'failure', null, null, ['email' => 'unknown@example.com'], '192.0.2.12');
+    $logger->record('login', 'success', $admin, $admin->id, [], '192.0.2.13');
+
+    $response = $this->actingAs($admin)
+        ->getJson('/api/admin/audit-logs?category=security&outcome=failure&ip_address=192.0.2.12&admin_name=unknown%40example.com')
+        ->assertOk()
+        ->assertJsonPath('data.logs.0.action', 'login')
+        ->assertJsonPath('data.logs.0.admin.name', 'unknown@example.com')
+        ->assertJsonPath('data.logs.0.admin.email', 'unknown@example.com');
+
+    expect($response->json('data.pagination.total'))->toBe(1);
+});
+
+it('regular admins cannot delete audit or security logs', function () {
     $admin = makeAdmin();
 
     AdminAuditLog::factory()->count(3)->create(['admin_id' => $admin->id]);
 
     $this->actingAs($admin)
         ->deleteJson('/api/admin/audit-logs')
-        ->assertStatus(200)
-        ->assertJsonPath('success', true)
-        ->assertJsonPath('message', 'All audit logs deleted.');
+        ->assertForbidden()
+        ->assertJsonPath('message', 'Only the super admin can delete audit and security logs.');
+
+    $log = AdminAuditLog::first();
+    $this->actingAs($admin)
+        ->deleteJson("/api/admin/audit-logs/{$log->id}")
+        ->assertForbidden();
+
+    expect(AdminAuditLog::count())->toBe(3);
+});
+
+it('super admin can delete an individual audit log and all remaining logs', function () {
+    $superAdmin = User::factory()->create(['role' => 'super_admin']);
+    $logs = AdminAuditLog::factory()->count(3)->create(['admin_id' => $superAdmin->id]);
+
+    $this->actingAs($superAdmin)
+        ->deleteJson("/api/admin/audit-logs/{$logs[0]->id}")
+        ->assertOk()
+        ->assertJsonPath('message', 'Audit log deleted.');
+
+    expect(AdminAuditLog::count())->toBe(2);
+
+    $this->actingAs($superAdmin)
+        ->deleteJson('/api/admin/audit-logs')
+        ->assertOk()
+        ->assertJsonPath('message', 'All audit and security logs deleted.')
+        ->assertJsonPath('data.deleted_count', 2);
 
     expect(AdminAuditLog::count())->toBe(0);
 });

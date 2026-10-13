@@ -2727,18 +2727,25 @@ Side Effects:
 
 ---
 
-### K16. Get Audit Logs (Admin)
+### K16. Get and Manage Audit Logs (Admin)
 ```
 GET /api/admin/audit-logs
 (Admin only)
+DELETE /api/admin/audit-logs/{id}
+DELETE /api/admin/audit-logs
+(Super Admin only for deletion)
 
 Query Parameters:
   admin_id:    integer, optional
   action:      string, optional
   target_type: string, optional
+  category:    admin_activity | security, optional
+  outcome:     success | failure, optional
+  admin_name:  actor name or email, optional
+  ip_address:  partial IP address, optional
   date_from:   date, optional
   date_to:     date, optional
-  page:        integer
+  page:        integer, optional
 
 Response 200:
 {
@@ -2747,19 +2754,19 @@ Response 200:
         "logs": [
             {
                 "id": 1,
+                "category": "security",
+                "outcome": "failure",
                 "admin": {
-                    "id": 5,
-                    "name": "Admin User"
+                    "id": null,
+                    "name": "unknown@example.com",
+                    "email": "unknown@example.com"
                 },
-                "action":
-                    "approved_worker_verification",
-                "target_type": "WorkerProfile",
-                "target_id": 3,
-                "details": {
-                    "worker_name":
-                        "Liza Dimaano"
-                },
+                "action": "login",
+                "target_type": null,
+                "target_id": null,
+                "details": {"email": "unknown@example.com", "reason": "invalid_credentials"},
                 "ip_address": "192.168.1.5",
+                "user_agent": "...",
                 "created_at": "..."
             }
         ],
@@ -2767,6 +2774,12 @@ Response 200:
     }
 }
 ```
+
+Security events include password and Google login/OTP outcomes, password change/reset, user suspension/reactivation, role or password changes made by administrators, and denied attempts to change or delete the protected super-admin account. Passwords, OTP values, reset tokens, Google ID tokens, and access tokens are never recorded.
+
+Audit and security logs are not automatically deleted. Only the Super Admin may permanently delete an individual log or all logs.
+
+Successful legacy admin activity records are backfilled with `outcome: success`. Historical IP addresses and field-level before/after values are not reconstructable when they were not captured originally; complete request metadata and change details are recorded for new actions.
 
 ---
 
