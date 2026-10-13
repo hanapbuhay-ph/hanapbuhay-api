@@ -29,5 +29,37 @@ class SecurityEventLogger
             'ip_address' => $ipAddress,
             'user_agent' => $userAgent === null ? null : mb_substr($userAgent, 0, 1024),
         ]);
+
+        if ($outcome !== 'failure') {
+            return;
+        }
+
+        if (str_starts_with($action, 'protected_account_')) {
+            app(AdminNotificationService::class)->notifySecurityAlert(
+                'Protected account access blocked',
+                'An admin was denied an attempt to change or delete the Super Admin account.',
+                '/audit-logs',
+            );
+
+            return;
+        }
+
+        if ($action === 'login' && $ipAddress !== null) {
+            $recentFailures = AdminAuditLog::query()
+                ->where('category', 'security')
+                ->where('action', 'login')
+                ->where('outcome', 'failure')
+                ->where('ip_address', $ipAddress)
+                ->where('created_at', '>=', now()->subMinutes(15))
+                ->count();
+
+            if ($recentFailures === 5) {
+                app(AdminNotificationService::class)->notifySecurityAlert(
+                    'Repeated sign-in failures',
+                    'Five or more sign-in attempts failed from the same IP address within 15 minutes.',
+                    '/audit-logs',
+                );
+            }
+        }
     }
 }

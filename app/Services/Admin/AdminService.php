@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Models\VerificationHistory;
 use App\Models\WorkerProfile;
 use App\Services\Notification\NotificationService;
+use App\Services\SecurityEventLogger;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -33,7 +34,7 @@ class AdminService
     /**
      * Write an admin audit log entry.
      */
-    public function audit(User $admin, string $action, string $targetType, int $targetId, array $details = [], ?string $ip = null): void
+    public function audit(User $admin, string $action, string $targetType, ?int $targetId, array $details = [], ?string $ip = null): void
     {
         AdminAuditLog::create([
             'admin_id' => $admin->id,
@@ -487,7 +488,7 @@ class AdminService
         ?User $target,
         array $details = [],
     ): void {
-        app(\App\Services\SecurityEventLogger::class)->record(
+        app(SecurityEventLogger::class)->record(
             $action,
             $outcome,
             $actor,
@@ -1067,8 +1068,7 @@ class AdminService
         ?string $category = null,
         ?string $outcome = null,
         ?string $ipAddress = null,
-    ): LengthAwarePaginator
-    {
+    ): LengthAwarePaginator {
         $query = AdminAuditLog::query()
             ->with('admin:id,name,email')
             ->orderByDesc('created_at');

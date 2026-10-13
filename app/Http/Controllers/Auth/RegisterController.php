@@ -8,6 +8,7 @@ use App\Mail\OtpMail;
 use App\Models\OtpCode;
 use App\Models\User;
 use App\Models\WorkerProfile;
+use App\Services\AdminNotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -21,12 +22,12 @@ class RegisterController extends Controller
         try {
             DB::transaction(function () use ($request, &$user, &$otp) {
                 $user = User::create([
-                    'name'          => $request->name,
-                    'email'         => $request->email,
-                    'password'      => $request->password,
+                    'name' => $request->name,
+                    'email' => $request->email,
+                    'password' => $request->password,
                     'mobile_number' => $request->mobile_number,
-                    'role'          => $request->role,
-                    'barangay_id'   => $request->barangay_id,
+                    'role' => $request->role,
+                    'barangay_id' => $request->barangay_id,
                     // email_verified_at intentionally left null until OTP confirmed
                 ]);
 
@@ -36,17 +37,24 @@ class RegisterController extends Controller
                 // in the client feed right away without needing to toggle it first.
                 if ($request->role === 'worker') {
                     WorkerProfile::create([
-                        'user_id'             => $user->id,
+                        'user_id' => $user->id,
                         'availability_status' => 'available',
                     ]);
                 }
 
                 $otp = OtpCode::create([
-                    'email'      => $user->email,
-                    'code'       => str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT),
-                    'type'       => 'email_verification',
+                    'email' => $user->email,
+                    'code' => str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT),
+                    'type' => 'email_verification',
                     'expires_at' => now()->addMinutes(10),
                 ]);
+
+                app(AdminNotificationService::class)->create(
+                    'new_registration',
+                    'New user registered',
+                    "{$user->name} registered as a {$user->role}.",
+                    ['url' => "/users/{$user->id}"],
+                );
             });
 
             // Queued: HTTP returns immediately (~100ms), SMTP runs in background worker.
@@ -57,13 +65,13 @@ class RegisterController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Registration successful. Please verify your email.',
-                'data'    => [
+                'data' => [
                     'user' => [
-                        'id'                => $user->id,
-                        'name'              => $user->name,
-                        'email'             => $user->email,
-                        'role'              => $user->role,
-                        'barangay'          => $user->barangay_id,
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'email' => $user->email,
+                        'role' => $user->role,
+                        'barangay' => $user->barangay_id,
                         'email_verified_at' => null,
                         'is_google_account' => false,
                     ],

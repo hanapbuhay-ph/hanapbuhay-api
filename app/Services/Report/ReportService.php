@@ -5,6 +5,7 @@ namespace App\Services\Report;
 use App\Models\Booking;
 use App\Models\Report;
 use App\Models\User;
+use App\Services\AdminNotificationService;
 use App\Services\Notification\NotificationService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -24,7 +25,7 @@ class ReportService
         $booking = Booking::findOrFail($data['booking_id']);
 
         $reportedUserId = (int) $data['reported_user_id'];
-        $expectedId     = $reporter->id === $booking->client_id
+        $expectedId = $reporter->id === $booking->client_id
             ? $booking->worker_id
             : $booking->client_id;
 
@@ -34,7 +35,7 @@ class ReportService
 
         $evidencePaths = null;
 
-        if (!empty($photos)) {
+        if (! empty($photos)) {
             try {
                 $stored = [];
                 foreach ($photos as $photo) {
@@ -48,14 +49,21 @@ class ReportService
         }
 
         $report = Report::create([
-            'booking_id'     => $booking->id,
-            'reported_by'    => $reporter->id,
-            'reported_user'  => $reportedUserId,
-            'reason'         => $data['reason'],
-            'description'    => $data['description'],
+            'booking_id' => $booking->id,
+            'reported_by' => $reporter->id,
+            'reported_user' => $reportedUserId,
+            'reason' => $data['reason'],
+            'description' => $data['description'],
             'evidence_paths' => $evidencePaths,
-            'status'         => 'under_review',
+            'status' => 'under_review',
         ]);
+
+        app(AdminNotificationService::class)->create(
+            'new_report',
+            'New report submitted',
+            "{$reporter->name} submitted a report for booking #{$booking->booking_code}.",
+            ['url' => "/reports/{$report->id}"],
+        );
 
         $reportedUser = User::find($reportedUserId);
         if ($reportedUser !== null) {
@@ -77,12 +85,12 @@ class ReportService
     public function listForUser(User $user, string $view = 'all'): LengthAwarePaginator
     {
         return Report::with([
-                'booking:id,booking_code',
-                'reporter:id,name,profile_photo_path',
-                'reportedUser:id,name,profile_photo_path',
-                'resolvedBy:id,name',
-                'reportReason:code,label',
-            ])
+            'booking:id,booking_code',
+            'reporter:id,name,profile_photo_path',
+            'reportedUser:id,name,profile_photo_path',
+            'resolvedBy:id,name',
+            'reportReason:code,label',
+        ])
             ->when($view === 'submitted', fn ($query) => $query->where('reported_by', $user->id))
             ->when($view === 'received', fn ($query) => $query->where('reported_user', $user->id))
             ->when($view === 'all', fn ($query) => $query->where(fn ($q) => $q->where('reported_by', $user->id)->orWhere('reported_user', $user->id)))
@@ -93,10 +101,10 @@ class ReportService
     public function find(int $id): Report
     {
         return Report::with([
-                'booking:id,booking_code',
-                'reporter:id,name,profile_photo_path',
-                'reportedUser:id,name,profile_photo_path',
-            ])
+            'booking:id,booking_code',
+            'reporter:id,name,profile_photo_path',
+            'reportedUser:id,name,profile_photo_path',
+        ])
             ->findOrFail($id);
     }
 }

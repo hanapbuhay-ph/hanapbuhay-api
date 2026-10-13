@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\AdminBookingController;
 use App\Http\Controllers\Admin\AdminChatLogController;
 use App\Http\Controllers\Admin\AdminDeletionController;
 use App\Http\Controllers\Admin\AdminJobPostController;
+use App\Http\Controllers\Admin\AdminNotificationController;
 use App\Http\Controllers\Admin\AdminRatingController;
 use App\Http\Controllers\Admin\AdminReportController;
 use App\Http\Controllers\Admin\AdminSettingsController;
@@ -210,6 +211,13 @@ Route::middleware(['auth:sanctum', 'active', 'worker'])->prefix('worker')->group
 |--------------------------------------------------------------------------
 */
 Route::middleware(['auth:sanctum', 'active', 'admin'])->prefix('admin')->group(function () {
+    // Shared admin notification inbox
+    Route::get('notifications', [AdminNotificationController::class, 'index']);
+    Route::post('notifications/read-all', [AdminNotificationController::class, 'markAllRead']);
+    Route::post('notifications/{id}/read', [AdminNotificationController::class, 'markRead'])->whereNumber('id');
+    Route::delete('notifications', [AdminNotificationController::class, 'destroyAll']);
+    Route::delete('notifications/{id}', [AdminNotificationController::class, 'destroy'])->whereNumber('id');
+
     // Verification management
     Route::get('verifications', [AdminVerificationController::class, 'index']);
     Route::get('verifications/pending', [AdminVerificationController::class, 'pending']); // spec §K2 alias

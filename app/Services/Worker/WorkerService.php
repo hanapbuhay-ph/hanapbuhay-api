@@ -7,18 +7,19 @@ use App\Http\Requests\Worker\SubmitVerificationRequest;
 use App\Http\Requests\Worker\UpdateWorkerProfileRequest;
 use App\Models\User;
 use App\Models\VerificationHistory;
-use App\Models\WorkerProfile;
+use App\Services\AdminNotificationService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Throwable;
 
 class WorkerService
 {
     /**
      * @return array{verification_status: string}
-     * @throws \Symfony\Component\HttpKernel\Exception\HttpException
+     *
+     * @throws HttpException
      */
     public function submitVerification(User $user, SubmitVerificationRequest $request): array
     {
@@ -33,7 +34,7 @@ class WorkerService
         }
 
         $documentFields = ['government_id', 'barangay_certificate', 'selfie_with_id', 'skill_certificate'];
-        $storedPaths    = [];
+        $storedPaths = [];
 
         foreach ($documentFields as $field) {
             if (! $request->hasFile($field)) {
@@ -41,7 +42,7 @@ class WorkerService
             }
 
             try {
-                $ext  = $request->file($field)->getClientOriginalExtension();
+                $ext = $request->file($field)->getClientOriginalExtension();
                 $path = "verifications/{$user->id}/{$field}.{$ext}";
 
                 Storage::disk('public')->putFileAs(
@@ -53,9 +54,9 @@ class WorkerService
                 $storedPaths[$field] = $path;
             } catch (Throwable $e) {
                 Log::error('Verification file upload failed', [
-                    'user_id'  => $user->id,
-                    'field'    => $field,
-                    'error'    => $e->getMessage(),
+                    'user_id' => $user->id,
+                    'field' => $field,
+                    'error' => $e->getMessage(),
                 ]);
 
                 throw new BusinessRuleException('File upload failed. Please try again.', 500);
@@ -73,22 +74,29 @@ class WorkerService
             foreach ($storedPaths as $documentType => $filePath) {
                 $workerProfile->verificationDocuments()->create([
                     'document_type' => $documentType,
-                    'file_path'     => $filePath,
-                    'status'        => 'pending',
+                    'file_path' => $filePath,
+                    'status' => 'pending',
                 ]);
             }
 
             $workerProfile->update([
-                'verification_status'  => 'pending',
+                'verification_status' => 'pending',
                 'verification_remarks' => null,
             ]);
 
             VerificationHistory::create([
                 'worker_profile_id' => $workerProfile->id,
-                'status'            => 'pending',
-                'remarks'           => null,
+                'status' => 'pending',
+                'remarks' => null,
             ]);
         });
+
+        app(AdminNotificationService::class)->create(
+            'verification_submitted',
+            'Worker verification submitted',
+            "{$user->name} submitted documents for verification.",
+            ['url' => "/verifications/{$workerProfile->id}"],
+        );
 
         return ['verification_status' => 'pending'];
     }
@@ -103,11 +111,11 @@ class WorkerService
 
         return [
             'verification_status' => $workerProfile->verification_status,
-            'trust_tier'          => $workerProfile->trust_tier,
+            'trust_tier' => $workerProfile->trust_tier,
             'availability_status' => $workerProfile->availability_status,
-            'remarks'             => $workerProfile->verification_remarks,
-            'documents'           => $workerProfile->verificationDocuments->map(fn ($doc) => [
-                'type'   => $doc->document_type,
+            'remarks' => $workerProfile->verification_remarks,
+            'documents' => $workerProfile->verificationDocuments->map(fn ($doc) => [
+                'type' => $doc->document_type,
                 'status' => $doc->status,
             ])->values()->all(),
         ];
@@ -123,7 +131,7 @@ class WorkerService
 
         DB::transaction(function () use ($workerProfile, $request): void {
             $workerProfile->update(array_filter([
-                'bio'                 => $request->input('bio'),
+                'bio' => $request->input('bio'),
                 'availability_status' => $request->input('availability_status'),
             ], fn ($value) => $value !== null));
 
@@ -138,15 +146,15 @@ class WorkerService
         $workerProfile->load('serviceCategories');
 
         return [
-            'bio'                 => $workerProfile->bio,
+            'bio' => $workerProfile->bio,
             'availability_status' => $workerProfile->availability_status,
             'verification_status' => $workerProfile->verification_status,
-            'trust_tier'          => $workerProfile->trust_tier,
-            'average_rating'      => $workerProfile->average_rating,
-            'total_reviews'       => $workerProfile->total_reviews,
-            'completed_jobs'      => $workerProfile->completed_jobs,
-            'categories'          => $workerProfile->serviceCategories->map(fn ($cat) => [
-                'id'   => $cat->id,
+            'trust_tier' => $workerProfile->trust_tier,
+            'average_rating' => $workerProfile->average_rating,
+            'total_reviews' => $workerProfile->total_reviews,
+            'completed_jobs' => $workerProfile->completed_jobs,
+            'categories' => $workerProfile->serviceCategories->map(fn ($cat) => [
+                'id' => $cat->id,
                 'name' => $cat->name,
             ])->values()->all(),
         ];

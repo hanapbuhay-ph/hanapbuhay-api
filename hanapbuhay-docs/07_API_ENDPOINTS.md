@@ -2048,6 +2048,20 @@ All admin routes require:
 
 ---
 
+### Admin Notifications
+
+Admin notifications are shared across admin accounts. Read state is per-admin. Results use cursor pagination so the inbox can grow without loading the complete history. Only the Super Admin may delete notifications; clearing the inbox does not delete Audit Logs.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/api/admin/notifications?per_page=20&cursor={cursor}` | List notifications (1-50 per page), unread count, and next cursor |
+| POST | `/api/admin/notifications/{id}/read` | Mark one notification as read for the current admin |
+| POST | `/api/admin/notifications/read-all` | Mark all notifications as read for the current admin |
+| DELETE | `/api/admin/notifications/{id}` | Delete one notification (Super Admin only) |
+| DELETE | `/api/admin/notifications` | Delete all notifications for every admin (Super Admin only) |
+
+Notification events include new user registrations, worker job posts, worker verification submissions, user reports, blocked attempts to change the Super Admin account, and five failed sign-ins from one IP address within 15 minutes. Each event carries an internal admin-panel destination where a detail page is available.
+
 ### K1. Admin Dashboard Stats
 ```
 GET /api/admin/dashboard

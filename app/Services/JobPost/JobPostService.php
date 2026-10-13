@@ -4,6 +4,7 @@ namespace App\Services\JobPost;
 
 use App\Models\JobPost;
 use App\Models\User;
+use App\Services\AdminNotificationService;
 use Illuminate\Database\Eloquent\Collection;
 
 class JobPostService
@@ -25,19 +26,26 @@ class JobPostService
             ->delete();
 
         $post = JobPost::create([
-            'worker_profile_id'   => $profile->id,
+            'worker_profile_id' => $profile->id,
             'service_category_id' => $data['service_category_id'],
-            'title'               => $data['title'],
-            'description'         => $data['description'],
-            'rate_amount'         => $data['rate_amount'],
-            'rate_type'           => $data['rate_type'],
-            'is_available'        => $data['is_available'] ?? true,
-            'is_active'           => true,
+            'title' => $data['title'],
+            'description' => $data['description'],
+            'rate_amount' => $data['rate_amount'],
+            'rate_type' => $data['rate_type'],
+            'is_available' => $data['is_available'] ?? true,
+            'is_active' => true,
         ]);
 
         // Keep the pivot in sync: attach the category if not already linked.
         // syncWithoutDetaching preserves other category rows on the worker.
         $profile->serviceCategories()->syncWithoutDetaching([$data['service_category_id']]);
+
+        app(AdminNotificationService::class)->create(
+            'new_job_post',
+            'New job post',
+            "{$worker->name} posted “{$post->title}”.",
+            ['url' => "/job-posts/{$post->id}"],
+        );
 
         return $post;
     }
