@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Booking;
+use App\Models\HanapbuhayNotification;
 use App\Models\Message;
 use App\Models\ServiceCategory;
 use App\Models\User;
@@ -210,8 +211,8 @@ it('returns 404 on spec thread URL for non-existent booking', function () {
 // POST /api/messages/{bookingId}  — spec URL send
 // ══════════════════════════════════════════════════════════════════════════════
 
-it('sends a text message via spec URL POST /api/messages/{bookingId}', function () {
-    ['client' => $client, 'booking' => $booking] = makeBookingPair();
+it('sends a text message and notifies the receiver', function () {
+    ['client' => $client, 'worker' => $worker, 'booking' => $booking] = makeBookingPair();
 
     $this->actingAs($client)
         ->postJson("/api/messages/{$booking->id}", ['message' => 'Hello worker!'])
@@ -220,6 +221,22 @@ it('sends a text message via spec URL POST /api/messages/{bookingId}', function 
         ->assertJsonStructure([
             'data' => ['message' => ['id', 'sender_id', 'sender_name', 'content', 'attachment_url', 'is_read', 'created_at']],
         ]);
+
+    $this->assertDatabaseHas('hanapbuhay_notifications', [
+        'user_id' => $worker->id,
+        'type' => 'new_chat_message',
+    ]);
+});
+
+it('does not notify a user who disabled message notifications', function () {
+    ['client' => $client, 'worker' => $worker, 'booking' => $booking] = makeBookingPair();
+    $worker->update(['notify_messages' => false]);
+
+    $this->actingAs($client)
+        ->postJson("/api/messages/{$booking->id}", ['message' => 'Hello worker!'])
+        ->assertStatus(201);
+
+    expect(HanapbuhayNotification::where('user_id', $worker->id)->count())->toBe(0);
 });
 
 it('sends a message with an image attachment', function () {

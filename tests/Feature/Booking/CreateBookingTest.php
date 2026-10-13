@@ -6,6 +6,7 @@ use App\Models\ServiceCategory;
 use App\Models\User;
 use App\Models\WorkerProfile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 
 uses(RefreshDatabase::class);
 
@@ -20,6 +21,7 @@ function validPayload(int $workerId, int $categoryId): array
 }
 
 it('allows a client to create a booking (happy path)', function () {
+    Mail::fake();
     $client   = makeBookingClient();
     $worker   = makeApprovedBookingWorker();
     $category = ServiceCategory::factory()->create();
@@ -31,6 +33,30 @@ it('allows a client to create a booking (happy path)', function () {
         ->assertJsonPath('success', true)
         ->assertJsonPath('message', 'Booking created.')
         ->assertJsonStructure(['data' => ['booking' => ['id', 'booking_code', 'status']]]);
+
+    $this->assertDatabaseHas('hanapbuhay_notifications', [
+        'user_id' => $worker->id,
+        'type' => 'booking_created',
+    ]);
+});
+
+it('respects worker booking notification preferences when receiving a request', function () {
+    Mail::fake();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
+    $worker->update([
+        'notify_booking_updates' => false,
+        'notify_email' => false,
+        'notify_push' => false,
+    ]);
+    $category = ServiceCategory::factory()->create();
+
+    $this->actingAs($client)
+        ->postJson('/api/bookings', validPayload($worker->id, $category->id))
+        ->assertStatus(201);
+
+    expect(\App\Models\HanapbuhayNotification::where('user_id', $worker->id)->count())->toBe(0);
+    Mail::assertNothingQueued();
 });
 
 it('generates booking_code in HB-YYYY-XXXXX format', function () {

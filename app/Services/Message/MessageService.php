@@ -6,6 +6,7 @@ use App\Events\NewMessage;
 use App\Models\Booking;
 use App\Models\Message;
 use App\Models\User;
+use App\Services\Notification\NotificationService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -16,6 +17,8 @@ use Throwable;
 
 class MessageService
 {
+    public function __construct(private readonly NotificationService $notifications) {}
+
     /**
      * GET /api/messages — chat inbox.
      * Returns one row per booking that the user has exchanged messages on,
@@ -191,6 +194,28 @@ class MessageService
             $content ?? '',
             $message->created_at->toISOString(),
         );
+
+        $receiver = User::find($receiverId);
+        if ($receiver !== null) {
+            $notificationData = [
+                'booking_id' => (string) $booking->id,
+                'conversation_id' => (string) $booking->id,
+                'sender_id' => (string) $sender->id,
+            ];
+            $this->notifications->notify(
+                $receiver,
+                'New Message',
+                $content ?: 'You received a new attachment.',
+                'new_chat_message',
+                $notificationData,
+            );
+            $this->notifications->sendPush(
+                $receiver,
+                'New Message',
+                $content ?: 'You received a new attachment.',
+                $notificationData + ['type' => 'new_chat_message'],
+            );
+        }
 
         return $message;
     }

@@ -736,6 +736,47 @@ and whenever Firebase issues a new token.
 
 ---
 
+### C7. Notification Preferences
+```
+GET /api/user/notification-preferences
+POST /api/user/notification-preferences
+(Protected)
+```
+
+GET Response 200:
+```json
+{
+    "success": true,
+    "data": {
+        "booking_updates": true,
+        "messages": true,
+        "promotions": false,
+        "push": true,
+        "email": true
+    }
+}
+```
+
+POST accepts any subset of these boolean fields and returns the saved values:
+```json
+{
+    "booking_updates": false,
+    "messages": true,
+    "promotions": false,
+    "push": true,
+    "email": false
+}
+```
+
+Category preferences control future in-app and push notifications. `push`
+globally gates push delivery. `email` controls booking-update emails only;
+message notifications are delivered in-app and by push, never by email.
+Security and transactional account emails are not controlled by these settings.
+Booking-update emails are queued and require a configured mail transport and
+running queue worker to be delivered.
+
+---
+
 ## SECTION D: WORKER FEATURES
 
 ---

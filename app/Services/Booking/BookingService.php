@@ -24,7 +24,27 @@ class BookingService
             'status' => 'pending',
         ]);
 
-        return $booking->load(['worker.barangay', 'serviceCategory']);
+        $booking->load(['worker.barangay', 'serviceCategory']);
+
+        $title = 'New Booking Request';
+        $body = "You have received booking request {$booking->booking_code}.";
+        $notificationData = ['booking_id' => (string) $booking->id];
+
+        $this->notifications->notify(
+            $booking->worker,
+            $title,
+            $body,
+            'booking_created',
+            ['booking_id' => $booking->id],
+        );
+        $this->notifications->sendPush(
+            $booking->worker,
+            $title,
+            $body,
+            $notificationData + ['type' => 'booking_created'],
+        );
+
+        return $booking;
     }
 
     public function createForAdmin(array $data, User $client): Booking
