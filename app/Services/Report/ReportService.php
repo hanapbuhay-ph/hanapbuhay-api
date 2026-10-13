@@ -33,6 +33,31 @@ class ReportService
             throw new RuntimeException('You can only report the other party on this booking.');
         }
 
+        return $this->storeReport($booking, $reporter, User::findOrFail($reportedUserId), $data, $photos);
+    }
+
+    public function createOnBehalfOfUser(User $admin, array $data, array $photos): Report
+    {
+        $booking = Booking::with(['client', 'worker'])->findOrFail($data['booking_id']);
+        $isClientReporter = $data['reporter_role'] === 'client';
+        $reporter = $isClientReporter ? $booking->client : $booking->worker;
+        $reportedUser = $isClientReporter ? $booking->worker : $booking->client;
+
+        if ($reporter === null || $reportedUser === null) {
+            throw new RuntimeException('The booking must have both a client and a worker to be reported.');
+        }
+
+        return $this->storeReport($booking, $reporter, $reportedUser, $data, $photos, $admin);
+    }
+
+    private function storeReport(
+        Booking $booking,
+        User $reporter,
+        User $reportedUser,
+        array $data,
+        array $photos,
+        ?User $submittedByAdmin = null,
+    ): Report {
         $evidencePaths = null;
 
         if (! empty($photos)) {
@@ -51,32 +76,44 @@ class ReportService
         $report = Report::create([
             'booking_id' => $booking->id,
             'reported_by' => $reporter->id,
-            'reported_user' => $reportedUserId,
+            'reported_user' => $reportedUser->id,
+            'submitted_by_admin_id' => $submittedByAdmin?->id,
             'reason' => $data['reason'],
             'description' => $data['description'],
             'evidence_paths' => $evidencePaths,
             'status' => 'under_review',
         ]);
 
-        app(AdminNotificationService::class)->create(
-            'new_report',
-            'New report submitted',
-            "{$reporter->name} submitted a report for booking #{$booking->booking_code}.",
-            ['url' => "/reports/{$report->id}"],
-        );
+        if ($submittedByAdmin === null) {
+            app(AdminNotificationService::class)->create(
+                'new_report',
+                'New report submitted',
+                "{$reporter->name} submitted a report for booking #{$booking->booking_code}.",
+                ['url' => "/reports/{$report->id}"],
+            );
+        }
 
-        $reportedUser = User::find($reportedUserId);
-        if ($reportedUser !== null) {
-            $title = 'New report received';
-            $body = "A report has been submitted about your account for booking #{$booking->booking_code}.";
-            $data = [
-                'type' => 'report_received',
+        $title = 'New report received';
+        $body = "A report has been submitted about your account for booking #{$booking->booking_code}.";
+        $notificationData = [
+            'type' => 'report_received',
+            'report_id' => (string) $report->id,
+            'booking_id' => (string) $booking->id,
+        ];
+
+        $this->notifications->notify($reportedUser, $title, $body, 'report_received', $notificationData);
+        $this->notifications->sendPush($reportedUser, $title, $body, $notificationData);
+
+        if ($submittedByAdmin !== null) {
+            $reporterTitle = 'A report was submitted on your behalf';
+            $reporterBody = "An admin submitted a report for booking #{$booking->booking_code}.";
+            $reporterData = [
+                'type' => 'report_submitted_on_behalf',
                 'report_id' => (string) $report->id,
                 'booking_id' => (string) $booking->id,
             ];
-
-            $this->notifications->notify($reportedUser, $title, $body, 'report_received', $data);
-            $this->notifications->sendPush($reportedUser, $title, $body, $data);
+            $this->notifications->notify($reporter, $reporterTitle, $reporterBody, 'report_submitted_on_behalf', $reporterData);
+            $this->notifications->sendPush($reporter, $reporterTitle, $reporterBody, $reporterData);
         }
 
         return $report;
@@ -88,6 +125,7 @@ class ReportService
             'booking:id,booking_code',
             'reporter:id,name,profile_photo_path',
             'reportedUser:id,name,profile_photo_path',
+            'submittedByAdmin:id,name',
             'resolvedBy:id,name',
             'reportReason:code,label',
         ])
@@ -104,6 +142,7 @@ class ReportService
             'booking:id,booking_code',
             'reporter:id,name,profile_photo_path',
             'reportedUser:id,name,profile_photo_path',
+            'submittedByAdmin:id,name',
         ])
             ->findOrFail($id);
     }

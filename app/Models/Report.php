@@ -11,6 +11,7 @@ class Report extends Model
         'booking_id',
         'reported_by',
         'reported_user',
+        'submitted_by_admin_id',
         'reason',
         'description',
         'evidence_paths',
@@ -41,6 +42,11 @@ class Report extends Model
     public function reportedUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'reported_user');
+    }
+
+    public function submittedByAdmin(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'submitted_by_admin_id');
     }
 
     public function resolvedBy(): BelongsTo

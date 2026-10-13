@@ -612,6 +612,7 @@ class AdminService
                 'booking:id,booking_code',
                 'reporter:id,name',
                 'reportedUser:id,name',
+                'submittedByAdmin:id,name',
             ])
             ->orderByDesc('created_at');
 
@@ -635,6 +636,7 @@ class AdminService
             'booking:id,booking_code',
             'reporter:id,name',
             'reportedUser:id,name',
+            'submittedByAdmin:id,name',
             'resolvedBy:id,name',
         ])->findOrFail($id);
     }

@@ -243,6 +243,7 @@ Route::middleware(['auth:sanctum', 'active', 'admin'])->prefix('admin')->group(f
 
     // Report management
     Route::get('reports', [AdminReportController::class, 'index']);
+    Route::post('reports', [AdminReportController::class, 'store']);
     Route::get('reports/{id}', [AdminReportController::class, 'show']);
     Route::patch('reports/{id}/resolve', [AdminReportController::class, 'resolve']);
 

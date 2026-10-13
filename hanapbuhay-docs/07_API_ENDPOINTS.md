@@ -2618,6 +2618,29 @@ Response 200:
 
 ---
 
+### Admin Submit Report on Behalf of a User
+```
+POST /api/admin/reports
+(Admin only; accepts multipart/form-data)
+
+Fields:
+  booking_id: required integer
+  reporter_role: required "client" or "worker"
+  reason: required active report reason for reporter_role
+  description: required string, maximum 2000 characters
+  evidence_photos[]: optional, up to 3 images (JPG/PNG/WebP, max 5 MB each)
+
+The selected booking participant is the report's represented reporter; the
+other participant is the reported user. The admin ID is stored separately as
+the submitter, and the action is recorded in Audit Logs. Both the represented
+user and the reported user receive in-app notifications (and push notifications
+when available).
+
+Response: 201 Created
+```
+
+---
+
 ### K13. Resolve Report (Admin)
 ```
 POST /api/admin/reports/{reportId}/resolve
