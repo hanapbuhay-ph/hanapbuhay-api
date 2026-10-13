@@ -7,10 +7,12 @@ use App\Http\Requests\Worker\SubmitVerificationRequest;
 use App\Http\Requests\Worker\UpdateWorkerProfileRequest;
 use App\Models\User;
 use App\Models\VerificationHistory;
+use App\Models\WorkerPortfolioPhoto;
 use App\Services\AdminNotificationService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Throwable;
 
@@ -129,21 +131,98 @@ class WorkerService
             throw new BusinessRuleException('Worker profile not found.', 404);
         }
 
-        DB::transaction(function () use ($workerProfile, $request): void {
-            $workerProfile->update(array_filter([
-                'bio' => $request->input('bio'),
-                'availability_status' => $request->input('availability_status'),
-            ], fn ($value) => $value !== null));
+        $keepPhotoIds = array_map(
+            'intval',
+            (array) $request->input('keep_portfolio_photo_ids', []),
+        );
+        $newPhotos = (array) $request->file('portfolio_photos', []);
+        $syncPortfolioPhotos = $request->boolean('sync_portfolio_photos')
+            || $request->has('keep_portfolio_photo_ids');
+        $existingPhotoCount = $syncPortfolioPhotos
+            ? count($keepPhotoIds)
+            : $workerProfile->portfolioPhotos()->count();
+        if ($existingPhotoCount + count($newPhotos) > 6) {
+            throw ValidationException::withMessages([
+                'portfolio_photos' => 'A maximum of six portfolio photos is allowed.',
+            ]);
+        }
 
-            if ($request->filled('category_ids')) {
-                $workerProfile->serviceCategories()->sync($request->input('category_ids'));
+        $storedPhotoPaths = [];
+        try {
+            foreach ($newPhotos as $photo) {
+                $path = $photo->store("worker-portfolios/{$user->id}", 'public');
+                if ($path === false) {
+                    throw new \RuntimeException('Unable to store a portfolio photo.');
+                }
+                $storedPhotoPaths[] = $path;
             }
-        });
 
-        // NOTE: portfolio_photos storage is skipped — a worker_portfolio_photos
-        // table is needed in a future migration to persist these properly.
+            $removedPhotoPaths = DB::transaction(function () use (
+                $workerProfile,
+                $request,
+                $keepPhotoIds,
+                $storedPhotoPaths,
+                $syncPortfolioPhotos,
+            ): array {
+                $workerProfile->update(array_filter([
+                    'bio' => $request->input('bio'),
+                    'availability_status' => $request->input('availability_status'),
+                ], fn ($value) => $value !== null));
 
-        $workerProfile->load('serviceCategories');
+                if ($request->boolean('sync_categories') || $request->has('category_ids')) {
+                    $workerProfile->serviceCategories()->sync($request->input('category_ids', []));
+                }
+
+                $removedPhotoPaths = [];
+                if ($syncPortfolioPhotos || $storedPhotoPaths !== []) {
+                    $photos = $workerProfile->portfolioPhotos()->get();
+                    $keptPhotos = $syncPortfolioPhotos
+                        ? $photos
+                            ->filter(fn (WorkerPortfolioPhoto $photo) => in_array($photo->id, $keepPhotoIds, true))
+                            ->values()
+                        : $photos;
+
+                    if ($syncPortfolioPhotos) {
+                        $removedPhotoPaths = $photos
+                            ->reject(fn (WorkerPortfolioPhoto $photo) => in_array($photo->id, $keepPhotoIds, true))
+                            ->pluck('file_path')
+                            ->all();
+
+                        $workerProfile->portfolioPhotos()
+                            ->whereNotIn('id', $keepPhotoIds ?: [0])
+                            ->delete();
+                    }
+
+                    foreach ($keptPhotos as $order => $photo) {
+                        $photo->update(['display_order' => $order]);
+                    }
+
+                    $nextOrder = $keptPhotos->count();
+                    foreach ($storedPhotoPaths as $path) {
+                        $workerProfile->portfolioPhotos()->create([
+                            'file_path' => $path,
+                            'display_order' => $nextOrder++,
+                        ]);
+                    }
+                }
+
+                return $removedPhotoPaths;
+            });
+        } catch (Throwable $exception) {
+            Storage::disk('public')->delete($storedPhotoPaths);
+            throw $exception;
+        }
+
+        if ($removedPhotoPaths !== []) {
+            if (! Storage::disk('public')->delete($removedPhotoPaths)) {
+                Log::warning('Unable to remove one or more deleted worker portfolio photos.', [
+                    'worker_profile_id' => $workerProfile->id,
+                    'paths' => $removedPhotoPaths,
+                ]);
+            }
+        }
+
+        $workerProfile->load(['serviceCategories', 'portfolioPhotos']);
 
         return [
             'bio' => $workerProfile->bio,
@@ -156,6 +235,11 @@ class WorkerService
             'categories' => $workerProfile->serviceCategories->map(fn ($cat) => [
                 'id' => $cat->id,
                 'name' => $cat->name,
+            ])->values()->all(),
+            'portfolio_photos' => $workerProfile->portfolioPhotos->map(fn (WorkerPortfolioPhoto $photo) => [
+                'id' => $photo->id,
+                'url' => asset('storage/'.$photo->file_path),
+                'display_order' => $photo->display_order,
             ])->values()->all(),
         ];
     }

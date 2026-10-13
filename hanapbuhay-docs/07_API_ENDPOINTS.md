@@ -1064,14 +1064,22 @@ multipart/form-data)
 
 Request Body:
   bio:              string, optional,
-                    max:500
+                    max:1000
   availability_status: string, optional,
                     in:available,busy,offline
   category_ids:     array of integers,
-                    optional
+                    optional; service category IDs
+  sync_categories:  boolean, optional,
+                    set to true to explicitly sync categories
+                    (an omitted category_ids array clears all categories)
+  sync_portfolio_photos: boolean, optional,
+                    set to true to apply photo removals
+  keep_portfolio_photo_ids: array of integers, optional,
+                    IDs of existing photos to retain; scoped to the
+                    authenticated worker profile
   portfolio_photos: file[], optional
-                    (multiple files)
-                    (jpeg/png, max 2MB each)
+                    (multiple image files, max 5MB each)
+                    at most six retained + uploaded photos total
 
 Response 200:
 {
@@ -1081,7 +1089,10 @@ Response 200:
         "worker_profile": {
             "bio": "...",
             "availability_status": "available",
-            "categories": [...]
+            "categories": [{"id": 1, "name": "Electrical"}],
+            "portfolio_photos": [
+                {"id": 12, "url": "https://example.com/storage/worker-portfolios/1/photo.jpg", "display_order": 0}
+            ]
         }
     }
 }

@@ -136,6 +136,7 @@ class WorkerSearchService
         $profile = WorkerProfile::with([
             'user.barangay',
             'serviceCategories',
+            'portfolioPhotos',
             'verificationDocuments',
             'jobPosts.serviceCategory',
             'ratings' => fn ($q) => $q->with('ratedByUser')->latest(),
@@ -248,7 +249,11 @@ class WorkerSearchService
                 'id' => $c->id,
                 'name' => $c->name,
             ])->values()->all(),
-            'portfolio_photos' => [], // TODO: needs worker_portfolio_photos table
+            'portfolio_photos' => $profile->portfolioPhotos->map(fn ($photo) => [
+                'id' => $photo->id,
+                'url' => asset('storage/'.$photo->file_path),
+                'display_order' => $photo->display_order,
+            ])->values()->all(),
             'average_rating' => (float) $profile->average_rating,
             'total_reviews' => $profile->total_reviews,
             'completed_jobs' => $completedJobs,
