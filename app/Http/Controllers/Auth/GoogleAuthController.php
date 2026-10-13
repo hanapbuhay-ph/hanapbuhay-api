@@ -13,13 +13,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Throwable;
 
 class GoogleAuthController extends Controller
 {
-    public function __construct(private readonly AuthService $authService)
-    {
-    }
+    public function __construct(private readonly AuthService $authService) {}
 
     /**
      * Called by Flutter after it obtains a Google ID token via google_sign_in.
@@ -72,18 +71,18 @@ class GoogleAuthController extends Controller
                 // Look up by google_id first, fall back to email so a user
                 // who previously registered manually can link their Google account.
                 $existing = User::where('google_id', $tokenInfo['sub'])
-                                ->orWhere('email', $tokenInfo['email'])
-                                ->first();
+                    ->orWhere('email', $tokenInfo['email'])
+                    ->first();
 
                 if ($existing !== null) {
                     if ($existing->is_active === false) {
-                        throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException(
+                        throw new AccessDeniedHttpException(
                             'Your account has been suspended.'
                         );
                     }
 
-                    if ($adminOnly && $existing->role !== 'admin') {
-                        throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException(
+                    if ($adminOnly && ! $existing->isAdmin()) {
+                        throw new AccessDeniedHttpException(
                             'This Google account is not configured as an admin.'
                         );
                     }
@@ -91,7 +90,7 @@ class GoogleAuthController extends Controller
                     // Link google_id if they registered manually before.
                     if ($existing->google_id === null) {
                         $existing->update([
-                            'google_id'         => $tokenInfo['sub'],
+                            'google_id' => $tokenInfo['sub'],
                             'is_google_account' => true,
                         ]);
                     }
@@ -100,7 +99,7 @@ class GoogleAuthController extends Controller
                 }
 
                 if ($adminOnly) {
-                    throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException(
+                    throw new AccessDeniedHttpException(
                         'This Google account is not configured as an admin.'
                     );
                 }
@@ -110,14 +109,14 @@ class GoogleAuthController extends Controller
                 // New Google users get role=null intentionally — they must
                 // call complete-profile before they can use the app.
                 return User::create([
-                    'name'               => $tokenInfo['name'] ?? $tokenInfo['email'],
-                    'email'              => $tokenInfo['email'],
-                    'google_id'          => $tokenInfo['sub'],
+                    'name' => $tokenInfo['name'] ?? $tokenInfo['email'],
+                    'email' => $tokenInfo['email'],
+                    'google_id' => $tokenInfo['sub'],
                     'profile_photo_path' => $tokenInfo['picture'] ?? null,
-                    'role'               => null,
-                    'is_google_account'  => true,
-                    'password'           => null,
-                    'email_verified_at'  => now(),
+                    'role' => null,
+                    'is_google_account' => true,
+                    'password' => null,
+                    'email_verified_at' => now(),
                 ]);
             });
 
@@ -147,13 +146,13 @@ class GoogleAuthController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => $isNewUser ? 'Account created successfully.' : 'Login successful.',
-                'data'    => [
-                    'token'       => $token,
+                'data' => [
+                    'token' => $token,
                     'is_new_user' => $isNewUser,
-                    'user'        => $this->authService->formatUser($user),
+                    'user' => $this->authService->formatUser($user),
                 ],
             ], $isNewUser ? 201 : 200);
-        } catch (\Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException $e) {
+        } catch (AccessDeniedHttpException $e) {
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -194,14 +193,14 @@ class GoogleAuthController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Profile completed.',
-                'data'    => [
+                'data' => [
                     'user' => $this->authService->formatUser($user),
                 ],
             ]);
         } catch (Throwable $e) {
             Log::error('Profile completion failed', [
                 'user_id' => $request->user()->id,
-                'error'   => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([

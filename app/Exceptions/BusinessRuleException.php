@@ -12,11 +12,16 @@ class BusinessRuleException extends Exception
         parent::__construct($message);
     }
 
+    public function statusCode(): int
+    {
+        return $this->statusCode;
+    }
+
     public function render(): JsonResponse
     {
         return response()->json([
             'success' => false,
             'message' => $this->getMessage(),
-        ], $this->statusCode);
+        ], $this->statusCode());
     }
 }

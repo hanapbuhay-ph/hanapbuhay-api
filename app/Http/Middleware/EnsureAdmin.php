@@ -14,7 +14,7 @@ class EnsureAdmin
             return response()->json(['success' => false, 'message' => 'Unauthenticated.'], 401);
         }
 
-        if ($request->user()->role !== 'admin') {
+        if (! $request->user()->isAdmin()) {
             return response()->json([
                 'success' => false,
                 'message' => 'This action is for admins only.',

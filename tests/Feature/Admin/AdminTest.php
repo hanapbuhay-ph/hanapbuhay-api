@@ -12,6 +12,7 @@ use App\Models\VerificationHistory;
 use App\Models\WorkerProfile;
 use App\Services\Notification\NotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 
 uses(RefreshDatabase::class);
 
@@ -220,6 +221,112 @@ it('admin lists all users with pagination', function () use ($makeAdmin) {
                 'pagination' => ['current_page', 'per_page', 'total', 'last_page'],
             ],
         ]);
+});
+
+it('super admin can access admin routes', function () {
+    $superAdmin = User::factory()->create([
+        'role' => 'super_admin',
+        'email' => User::SUPER_ADMIN_EMAIL,
+    ]);
+
+    $this->actingAs($superAdmin)
+        ->getJson('/api/admin/users')
+        ->assertOk()
+        ->assertJsonPath('success', true);
+});
+
+it('ordinary admins cannot update, suspend, or delete the super admin account', function () use ($makeAdmin) {
+    $admin = $makeAdmin();
+    $superAdmin = User::factory()->create([
+        'role' => 'super_admin',
+        'email' => User::SUPER_ADMIN_EMAIL,
+        'name' => 'Protected Super Admin',
+        'password' => 'OriginalPassword123',
+    ]);
+
+    $this->actingAs($admin)
+        ->patchJson("/api/admin/users/{$superAdmin->id}", [
+            'name' => 'Changed by Admin',
+            'password' => 'ChangedPassword123',
+            'password_confirmation' => 'ChangedPassword123',
+        ])
+        ->assertForbidden();
+
+    $this->actingAs($admin)
+        ->postJson("/api/admin/users/{$superAdmin->id}/toggle-status", [
+            'action' => 'suspend',
+            'reason' => 'Testing super admin protection.',
+        ])
+        ->assertForbidden();
+
+    $this->actingAs($admin)
+        ->patchJson("/api/admin/users/{$superAdmin->id}/toggle-active")
+        ->assertForbidden();
+
+    $this->actingAs($admin)
+        ->deleteJson("/api/admin/users/{$superAdmin->id}")
+        ->assertForbidden();
+
+    $superAdmin->refresh();
+    expect($superAdmin->name)->toBe('Protected Super Admin')
+        ->and($superAdmin->is_active)->toBeTrue()
+        ->and(Hash::check('OriginalPassword123', $superAdmin->password))->toBeTrue();
+});
+
+it('admins cannot assign the super admin role through user management', function () use ($makeAdmin) {
+    $admin = $makeAdmin();
+    $user = User::factory()->create(['role' => 'client']);
+
+    $this->actingAs($admin)
+        ->patchJson("/api/admin/users/{$user->id}", ['role' => 'super_admin'])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['role']);
+
+    $this->actingAs($admin)
+        ->postJson('/api/admin/users', [
+            'name' => 'Unauthorized Super Admin',
+            'email' => 'unauthorized-super-admin@example.com',
+            'password' => 'Password123',
+            'password_confirmation' => 'Password123',
+            'mobile_number' => '09171234567',
+            'role' => 'super_admin',
+            'barangay_id' => Barangay::factory()->create()->id,
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['role']);
+});
+
+it('super admin can update its own account credentials', function () {
+    $superAdmin = User::factory()->create([
+        'role' => 'super_admin',
+        'email' => User::SUPER_ADMIN_EMAIL,
+    ]);
+
+    $this->actingAs($superAdmin)
+        ->patchJson("/api/admin/users/{$superAdmin->id}", [
+            'name' => 'Updated Super Admin',
+            'password' => 'UpdatedSuperPassword123',
+            'password_confirmation' => 'UpdatedSuperPassword123',
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.name', 'Updated Super Admin');
+
+    expect(Hash::check('UpdatedSuperPassword123', $superAdmin->fresh()->password))->toBeTrue();
+});
+
+it('deletion processing cannot remove the super admin account', function () use ($makeAdmin) {
+    $admin = $makeAdmin();
+    $superAdmin = User::factory()->create([
+        'role' => 'super_admin',
+        'email' => User::SUPER_ADMIN_EMAIL,
+        'deletion_requested_at' => now(),
+    ]);
+
+    $this->actingAs($admin)
+        ->postJson("/api/admin/deletion-requests/{$superAdmin->id}/process")
+        ->assertForbidden();
+
+    expect($superAdmin->fresh())->not->toBeNull();
 });
 
 it('admin filters users by role=worker and only workers are returned', function () use ($makeAdmin) {
@@ -452,6 +559,26 @@ it('admin can update and soft-delete a user', function () use ($makeAdmin) {
 
     expect(User::withTrashed()->find($user->id))->not->toBeNull();
     expect(User::find($user->id))->toBeNull();
+});
+
+it('admin can change a user password and receive a successful update response', function () use ($makeAdmin) {
+    $admin = $makeAdmin();
+    $user = User::factory()->create([
+        'role' => 'client',
+        'password' => 'OldPassword123',
+    ]);
+
+    $this->actingAs($admin)
+        ->patchJson("/api/admin/users/{$user->id}", [
+            'password' => 'NewPassword123',
+            'password_confirmation' => 'NewPassword123',
+        ])
+        ->assertOk()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('data.id', $user->id)
+        ->assertJsonMissingPath('data.password');
+
+    expect(Hash::check('NewPassword123', $user->fresh()->password))->toBeTrue();
 });
 
 it('admin cannot delete their own account', function () use ($makeAdmin) {

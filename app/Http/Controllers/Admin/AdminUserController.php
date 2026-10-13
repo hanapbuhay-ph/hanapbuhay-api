@@ -298,7 +298,7 @@ class AdminUserController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
-            ], 422);
+            ], $e->statusCode());
         }
 
         return response()->json([
@@ -316,7 +316,7 @@ class AdminUserController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
-            ], 422);
+            ], $e->statusCode());
         }
 
         return response()->json([
@@ -348,12 +348,12 @@ class AdminUserController extends Controller
     public function toggleActive(Request $request, int|string $id): JsonResponse
     {
         try {
-            $user = $this->adminService->toggleActive($id, $request->user()->id);
+            $user = $this->adminService->toggleActive((int) $id, $request->user());
         } catch (BusinessRuleException $e) {
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
-            ], 422);
+            ], $e->statusCode());
         }
 
         $message = $user->is_active ? 'User reactivated.' : 'User deactivated.';
@@ -387,6 +387,12 @@ class AdminUserController extends Controller
         }
 
         $user = User::findOrFail($id);
+        if ($user->isSuperAdmin() && ! $admin->isSuperAdmin()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The super admin account can only be managed by the super admin.',
+            ], 403);
+        }
 
         $newActive = ($action === 'reactivate');
         $user->update(['is_active' => $newActive]);

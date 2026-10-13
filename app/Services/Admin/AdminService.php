@@ -348,6 +348,7 @@ class AdminService
         }
 
         $user = User::findOrFail($userId);
+        $this->assertSuperAdminManageableBy($user, $admin);
         $role = $attributes['role'] ?? $user->role;
         $updateData = collect($attributes)->except('password')->all();
 
@@ -368,7 +369,7 @@ class AdminService
 
         $this->audit($admin, 'update_user', 'User', $user->id);
         event(new AdminEntityChanged('user', 'updated', (int) $user->id, [
-            'name' => $user->name->toString(),
+            'name' => $user->name,
             'email' => $user->email,
             'role' => $user->role,
         ]));
@@ -383,6 +384,7 @@ class AdminService
         }
 
         $user = User::findOrFail($userId);
+        $this->assertSuperAdminManageableBy($user, $admin);
         $userIdForEvent = (int) $user->id;
         $user->delete();
         $this->audit($admin, 'delete_user', 'User', $userIdForEvent);
@@ -397,18 +399,29 @@ class AdminService
      *
      * @throws BusinessRuleException
      */
-    public function toggleActive(int $userId, int $adminId): User
+    public function toggleActive(int $userId, User $admin): User
     {
-        if ($userId === $adminId) {
+        if ($userId === $admin->id) {
             throw new BusinessRuleException(
                 'You cannot deactivate your own account.'
             );
         }
 
         $user = User::findOrFail($userId);
+        $this->assertSuperAdminManageableBy($user, $admin);
         $user->update(['is_active' => ! $user->is_active]);
 
         return $user;
+    }
+
+    private function assertSuperAdminManageableBy(User $target, User $admin): void
+    {
+        if ($target->isSuperAdmin() && ! $admin->isSuperAdmin()) {
+            throw new BusinessRuleException(
+                'The super admin account can only be managed by the super admin.',
+                403
+            );
+        }
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -833,7 +846,7 @@ class AdminService
     ): LengthAwarePaginator {
         $query = User::query()
             ->with('barangay:id,name')
-            ->where('role', '!=', 'admin')
+            ->whereNotIn('role', ['admin', 'super_admin'])
             ->withCount('receivedRatings')
             ->withAvg('receivedRatings', 'score');
 

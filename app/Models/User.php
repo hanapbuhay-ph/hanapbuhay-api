@@ -14,6 +14,8 @@ use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
+    public const SUPER_ADMIN_EMAIL = 'hanapbuhay1234@gmail.com';
+
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
 
@@ -47,19 +49,29 @@ class User extends Authenticatable
     protected function casts(): array
     {
         return [
-            'email_verified_at'        => 'datetime',
-            'deletion_requested_at'    => 'datetime',
-            'password'                 => 'hashed',
-            'is_active'                => 'boolean',
-            'is_google_account'        => 'boolean',
-            'two_factor_enabled'      => 'boolean',
-            'notify_booking_updates'   => 'boolean',
-            'notify_messages'          => 'boolean',
-            'notify_promotions'        => 'boolean',
-            'notify_push'              => 'boolean',
-            'notify_email'             => 'boolean',
-            'last_seen_at'            => 'datetime',
+            'email_verified_at' => 'datetime',
+            'deletion_requested_at' => 'datetime',
+            'password' => 'hashed',
+            'is_active' => 'boolean',
+            'is_google_account' => 'boolean',
+            'two_factor_enabled' => 'boolean',
+            'notify_booking_updates' => 'boolean',
+            'notify_messages' => 'boolean',
+            'notify_promotions' => 'boolean',
+            'notify_push' => 'boolean',
+            'notify_email' => 'boolean',
+            'last_seen_at' => 'datetime',
         ];
+    }
+
+    public function isAdmin(): bool
+    {
+        return in_array($this->role, ['admin', 'super_admin'], true);
+    }
+
+    public function isSuperAdmin(): bool
+    {
+        return $this->role === 'super_admin';
     }
 
     public function barangay(): BelongsTo

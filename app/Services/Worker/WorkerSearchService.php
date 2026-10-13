@@ -4,6 +4,8 @@ namespace App\Services\Worker;
 
 use App\Exceptions\BusinessRuleException;
 use App\Helpers\DistanceHelper;
+use App\Models\Booking;
+use App\Models\ServiceCategory;
 use App\Models\User;
 use App\Models\WorkerProfile;
 use Illuminate\Http\Request;
@@ -12,7 +14,7 @@ class WorkerSearchService
 {
     public function getWorkersByCategory(User $authUser, int $categoryId, Request $request): array
     {
-        $category = \App\Models\ServiceCategory::find($categoryId);
+        $category = ServiceCategory::find($categoryId);
 
         if (! $category || ! $category->is_active) {
             throw new BusinessRuleException('Category not found.', 404);
@@ -21,7 +23,7 @@ class WorkerSearchService
         $query = WorkerProfile::query()
             ->where(function ($q) {
                 $q->whereNull('trust_tier')
-                  ->orWhereNotIn('trust_tier', ['flagged', 'revoked']);
+                    ->orWhereNotIn('trust_tier', ['flagged', 'revoked']);
             })
             ->whereHas('user', fn ($q) => $q->where('is_active', true))
             ->with([
@@ -51,27 +53,27 @@ class WorkerSearchService
             ? $authUser->barangay
             : $authUser->load('barangay')->barangay;
 
-        $formatted = $workers->map(function ($profile) use ($authBarangay, $categoryId) {
-            $summary  = $this->formatWorkerSummary($profile, $authBarangay);
-            $jobPost  = $profile->jobPosts->first();
+        $formatted = $workers->map(function ($profile) use ($authBarangay) {
+            $summary = $this->formatWorkerSummary($profile, $authBarangay);
+            $jobPost = $profile->jobPosts->first();
 
             $summary['job_post'] = $jobPost ? [
-                'id'           => $jobPost->id,
-                'category'     => [
-                    'id'   => $jobPost->serviceCategory?->id,
+                'id' => $jobPost->id,
+                'category' => [
+                    'id' => $jobPost->serviceCategory?->id,
                     'name' => $jobPost->serviceCategory?->name,
                 ],
-                'title'        => $jobPost->title,
-                'description'  => $jobPost->description,
-                'rate_amount'  => (float) $jobPost->rate_amount,
-                'rate_type'    => $jobPost->rate_type,
+                'title' => $jobPost->title,
+                'description' => $jobPost->description,
+                'rate_amount' => (float) $jobPost->rate_amount,
+                'rate_type' => $jobPost->rate_type,
                 'rate_display' => $jobPost->rate_display,
                 'is_available' => $jobPost->is_available,
-                'images'       => $jobPost->images->map(fn ($img) => [
-                    'id'            => $img->id,
-                    'image_url'     => asset('storage/' . $img->image_path),
+                'images' => $jobPost->images->map(fn ($img) => [
+                    'id' => $img->id,
+                    'image_url' => asset('storage/'.$img->image_path),
                     'thumbnail_url' => $img->thumbnail_path
-                        ? asset('storage/' . $img->thumbnail_path)
+                        ? asset('storage/'.$img->thumbnail_path)
                         : null,
                     'display_order' => $img->display_order,
                 ])->values()->all(),
@@ -82,8 +84,8 @@ class WorkerSearchService
 
         return [
             'category' => ['id' => $category->id, 'name' => $category->name],
-            'workers'  => $formatted,
-            'total'    => count($formatted),
+            'workers' => $formatted,
+            'total' => count($formatted),
         ];
     }
 
@@ -125,7 +127,7 @@ class WorkerSearchService
 
         return [
             'workers' => $workers->map(fn ($profile) => $this->formatWorkerSummary($profile, $authBarangay))->values()->all(),
-            'total'   => $workers->count(),
+            'total' => $workers->count(),
         ];
     }
 
@@ -147,7 +149,7 @@ class WorkerSearchService
         }
 
         if (
-            $authUser->role !== 'admin'
+            ! $authUser->isAdmin()
             && $profile->user_id !== $authUser->id
             && in_array($profile->trust_tier, ['flagged', 'revoked'], true)
         ) {
@@ -185,7 +187,7 @@ class WorkerSearchService
             return (int) ($profile->completed_jobs ?? 0);
         }
 
-        $count = \App\Models\Booking::query()
+        $count = Booking::query()
             ->where('worker_id', $userId)
             ->where('status', 'completed')
             ->count();
@@ -200,25 +202,25 @@ class WorkerSearchService
     private function formatWorkerSummary(WorkerProfile $profile, ?object $authBarangay): array
     {
         $workerBarangay = $profile->user?->barangay;
-        $distance       = $this->resolveDistance($authBarangay, $workerBarangay);
+        $distance = $this->resolveDistance($authBarangay, $workerBarangay);
         $completedJobs = $this->getCompletedJobsCount($profile);
 
         return [
-            'worker_profile_id'   => $profile->id,
-            'user_id'             => $profile->user_id,
-            'name'                => $profile->user?->name,
-            'profile_photo_url'   => $profile->user?->profile_photo_path
-                ? asset('storage/' . $profile->user->profile_photo_path)
+            'worker_profile_id' => $profile->id,
+            'user_id' => $profile->user_id,
+            'name' => $profile->user?->name,
+            'profile_photo_url' => $profile->user?->profile_photo_path
+                ? asset('storage/'.$profile->user->profile_photo_path)
                 : null,
-            'barangay'            => $workerBarangay?->name,
-            'barangay_id'         => $profile->user?->barangay_id,
-            'distance_km'         => $distance['distance_km'],
-            'distance_label'      => $distance['distance_label'],
-            'categories'          => $profile->serviceCategories->pluck('name')->all(),
-            'average_rating'      => (float) $profile->average_rating,
-            'total_reviews'       => $profile->total_reviews,
-            'completed_jobs'      => $completedJobs,
-            'trust_tier'          => $profile->trust_tier,
+            'barangay' => $workerBarangay?->name,
+            'barangay_id' => $profile->user?->barangay_id,
+            'distance_km' => $distance['distance_km'],
+            'distance_label' => $distance['distance_label'],
+            'categories' => $profile->serviceCategories->pluck('name')->all(),
+            'average_rating' => (float) $profile->average_rating,
+            'total_reviews' => $profile->total_reviews,
+            'completed_jobs' => $completedJobs,
+            'trust_tier' => $profile->trust_tier,
             'verification_status' => $profile->verification_status,
             'availability_status' => $profile->availability_status,
         ];
@@ -227,55 +229,55 @@ class WorkerSearchService
     private function formatWorkerDetail(WorkerProfile $profile, ?object $authBarangay): array
     {
         $workerBarangay = $profile->user?->barangay;
-        $distance       = $this->resolveDistance($authBarangay, $workerBarangay);
-        $completedJobs  = $this->getCompletedJobsCount($profile);
+        $distance = $this->resolveDistance($authBarangay, $workerBarangay);
+        $completedJobs = $this->getCompletedJobsCount($profile);
 
         return [
-            'worker_profile_id'   => $profile->id,
-            'user_id'             => $profile->user_id,
-            'name'                => $profile->user?->name,
-            'profile_photo_url'   => $profile->user?->profile_photo_path
-                ? asset('storage/' . $profile->user->profile_photo_path)
+            'worker_profile_id' => $profile->id,
+            'user_id' => $profile->user_id,
+            'name' => $profile->user?->name,
+            'profile_photo_url' => $profile->user?->profile_photo_path
+                ? asset('storage/'.$profile->user->profile_photo_path)
                 : null,
-            'bio'                 => $profile->bio,
-            'barangay'            => $workerBarangay?->name,
-            'barangay_id'         => $profile->user?->barangay_id,
-            'distance_km'         => $distance['distance_km'],
-            'distance_label'      => $distance['distance_label'],
-            'categories'          => $profile->serviceCategories->map(fn ($c) => [
-                'id'   => $c->id,
+            'bio' => $profile->bio,
+            'barangay' => $workerBarangay?->name,
+            'barangay_id' => $profile->user?->barangay_id,
+            'distance_km' => $distance['distance_km'],
+            'distance_label' => $distance['distance_label'],
+            'categories' => $profile->serviceCategories->map(fn ($c) => [
+                'id' => $c->id,
                 'name' => $c->name,
             ])->values()->all(),
-            'portfolio_photos'    => [], // TODO: needs worker_portfolio_photos table
-            'average_rating'      => (float) $profile->average_rating,
-            'total_reviews'       => $profile->total_reviews,
-            'completed_jobs'      => $completedJobs,
-            'trust_tier'          => $profile->trust_tier,
+            'portfolio_photos' => [], // TODO: needs worker_portfolio_photos table
+            'average_rating' => (float) $profile->average_rating,
+            'total_reviews' => $profile->total_reviews,
+            'completed_jobs' => $completedJobs,
+            'trust_tier' => $profile->trust_tier,
             'verification_status' => $profile->verification_status,
             'availability_status' => $profile->availability_status,
-            'job_posts'           => $profile->jobPosts->map(fn ($p) => [
-                'id'           => $p->id,
-                'category'     => [
-                    'id'   => $p->serviceCategory?->id,
+            'job_posts' => $profile->jobPosts->map(fn ($p) => [
+                'id' => $p->id,
+                'category' => [
+                    'id' => $p->serviceCategory?->id,
                     'name' => $p->serviceCategory?->name,
                 ],
-                'title'        => $p->title,
-                'description'  => $p->description,
-                'rate_amount'  => (float) $p->rate_amount,
-                'rate_type'    => $p->rate_type,
+                'title' => $p->title,
+                'description' => $p->description,
+                'rate_amount' => (float) $p->rate_amount,
+                'rate_type' => $p->rate_type,
                 'rate_display' => $p->rate_display,
                 'is_available' => $p->is_available,
             ])->values()->all(),
-            'reviews'             => $profile->ratings->map(fn ($r) => [
-                'id'               => $r->id,
-                'booking_id'       => $r->booking_id,
+            'reviews' => $profile->ratings->map(fn ($r) => [
+                'id' => $r->id,
+                'booking_id' => $r->booking_id,
                 'rated_by_name' => $r->ratedByUser?->name,
                 'reviewer_avatar_url' => $r->ratedByUser?->profile_photo_path
-                    ? asset('storage/' . $r->ratedByUser->profile_photo_path)
+                    ? asset('storage/'.$r->ratedByUser->profile_photo_path)
                     : null,
-                'score'         => $r->score,
-                'comment'       => $r->comment,
-                'created_at'    => $r->created_at?->toISOString(),
+                'score' => $r->score,
+                'comment' => $r->comment,
+                'created_at' => $r->created_at?->toISOString(),
             ])->values()->all(),
         ];
     }

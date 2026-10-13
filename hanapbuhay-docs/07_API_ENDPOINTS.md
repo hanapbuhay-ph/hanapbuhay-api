@@ -2316,6 +2316,11 @@ Verification documents are not included. Worker and client activity also
 includes booking summaries and only the first page (10 records) of bookings,
 received reviews, and given reviews. Use the paginated activity endpoints to
 retrieve additional pages.
+
+The `super_admin` role has the same admin-panel access as `admin`. The
+designated super-admin account cannot be updated, suspended, or deleted by a
+regular admin, and user-management endpoints do not allow assigning the
+`super_admin` role.
 ```
 
 ### K6a. Get a User Activity Page (Admin)

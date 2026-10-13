@@ -25,25 +25,25 @@ class AdminDeletionController extends Controller
         $paginator = $this->deletionService->listPendingDeletions();
 
         $users = collect($paginator->items())->map(fn (User $u) => [
-            'id'                      => $u->id,
-            'name'                    => $u->name,
-            'email'                   => $u->email,
-            'role'                    => $u->role,
-            'barangay'                => $u->barangay?->name,
-            'deletion_requested_at'   => $u->deletion_requested_at?->toIso8601String(),
-            'created_at'              => $u->created_at?->toIso8601String(),
+            'id' => $u->id,
+            'name' => $u->name,
+            'email' => $u->email,
+            'role' => $u->role,
+            'barangay' => $u->barangay?->name,
+            'deletion_requested_at' => $u->deletion_requested_at?->toIso8601String(),
+            'created_at' => $u->created_at?->toIso8601String(),
         ]);
 
         return response()->json([
             'success' => true,
             'message' => 'Deletion requests retrieved.',
-            'data'    => [
-                'users'      => $users,
+            'data' => [
+                'users' => $users,
                 'pagination' => [
                     'current_page' => $paginator->currentPage(),
-                    'per_page'     => $paginator->perPage(),
-                    'total'        => $paginator->total(),
-                    'last_page'    => $paginator->lastPage(),
+                    'per_page' => $paginator->perPage(),
+                    'total' => $paginator->total(),
+                    'last_page' => $paginator->lastPage(),
                 ],
             ],
         ]);
