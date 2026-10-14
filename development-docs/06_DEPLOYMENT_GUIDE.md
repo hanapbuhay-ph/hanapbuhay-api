@@ -180,6 +180,11 @@ used because the current MySQL TLS config uses the `Pdo\Mysql` constants. In Ren
    the application access to mounted secret files.
 5. Complete the database migration and seed plan before directing clients at
    the API. Do not assume the deploy automatically migrates the database.
+   For a new, empty pilot database, the one-time `docker/migrate-and-start.sh`
+   startup script applies migrations and seeds service categories. Set the
+   Render Docker Command to `/bin/sh /var/www/html/docker/migrate-and-start.sh`
+   for this deployment; after it succeeds, clear the override to use the
+   Dockerfile's normal startup command.
 
 The service listens on port `10000` and uses Laravel's `/up` health endpoint.
 The container starts the web server and queue worker together. Both stop when
