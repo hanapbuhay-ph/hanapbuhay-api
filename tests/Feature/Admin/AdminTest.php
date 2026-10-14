@@ -14,6 +14,7 @@ use App\Models\WorkerProfile;
 use App\Services\Notification\NotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 
 uses(RefreshDatabase::class);
 
@@ -553,9 +554,25 @@ it('requires a barangay when admin creates a user', function () use ($makeAdmin)
         ->assertJsonValidationErrors(['barangay_id']);
 });
 
-it('admin can update and soft-delete a user', function () use ($makeAdmin) {
+it('admin can update and permanently delete a user and its owned data', function () use ($makeAdmin) {
     $admin = $makeAdmin();
-    $user = User::factory()->create(['role' => 'client']);
+    Storage::fake('public');
+
+    $photoPath = 'profile-photos/user-avatar.jpg';
+    $documentPath = 'verifications/worker-government-id.jpg';
+    Storage::disk('public')->put($photoPath, 'avatar');
+    Storage::disk('public')->put($documentPath, 'document');
+
+    $user = User::factory()->create([
+        'role' => 'worker',
+        'profile_photo_path' => $photoPath,
+    ]);
+    $profile = WorkerProfile::factory()->create(['user_id' => $user->id]);
+    $document = VerificationDocument::factory()->create([
+        'worker_profile_id' => $profile->id,
+        'file_path' => $documentPath,
+    ]);
+    $token = $user->createToken('existing-session');
 
     $this->actingAs($admin)
         ->patchJson("/api/admin/users/{$user->id}", [
@@ -570,8 +587,12 @@ it('admin can update and soft-delete a user', function () use ($makeAdmin) {
         ->assertStatus(200)
         ->assertJsonPath('success', true);
 
-    expect(User::withTrashed()->find($user->id))->not->toBeNull();
-    expect(User::find($user->id))->toBeNull();
+    expect(User::withTrashed()->find($user->id))->toBeNull();
+    $this->assertDatabaseMissing('worker_profiles', ['id' => $profile->id]);
+    $this->assertDatabaseMissing('verification_documents', ['id' => $document->id]);
+    $this->assertDatabaseMissing('personal_access_tokens', ['id' => $token->accessToken->id]);
+    Storage::disk('public')->assertMissing($photoPath);
+    Storage::disk('public')->assertMissing($documentPath);
 });
 
 it('admin can change a user password and receive a successful update response', function () use ($makeAdmin) {

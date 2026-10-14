@@ -20,6 +20,9 @@ use App\Services\SecurityEventLogger;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class AdminService
 {
@@ -437,13 +440,88 @@ class AdminService
             'email' => $user->email,
             'role' => $user->role,
         ];
-        $this->securityEvent('user_deleted_by_admin', 'success', $admin, $user);
-        $user->delete();
-        $this->audit($admin, 'delete_user', 'User', $userIdForEvent, $userDetails);
+
+        $storagePaths = DB::transaction(function () use ($admin, $user, $userDetails, $userIdForEvent): array {
+            $storagePaths = $this->storagePathsForUser($user);
+
+            $this->securityEvent('user_deleted_by_admin', 'success', $admin, $user);
+            $user->tokens()->delete();
+            $user->forceDelete();
+            $this->audit($admin, 'delete_user', 'User', $userIdForEvent, $userDetails);
+
+            return $storagePaths;
+        });
+
+        if ($storagePaths !== [] && ! Storage::disk('public')->delete($storagePaths)) {
+            Log::warning('Unable to remove one or more files belonging to an admin-deleted user.', [
+                'user_id' => $userIdForEvent,
+                'paths' => $storagePaths,
+            ]);
+        }
+
         event(new AdminEntityChanged('user', 'deleted', $userIdForEvent, [
             'email' => $user->email,
             'role' => $user->role,
         ]));
+    }
+
+    private function storagePathsForUser(User $user): array
+    {
+        $paths = [$user->profile_photo_path];
+        $profile = $user->workerProfile;
+
+        if ($profile !== null) {
+            $paths = array_merge(
+                $paths,
+                $profile->verificationDocuments()->pluck('file_path')->all(),
+                $profile->portfolioPhotos()->pluck('file_path')->all(),
+            );
+
+            $posts = JobPost::withTrashed()
+                ->where('worker_profile_id', $profile->id)
+                ->with('images')
+                ->get();
+
+            foreach ($posts as $post) {
+                foreach ($post->images as $image) {
+                    $paths[] = $image->image_path;
+                    $paths[] = $image->thumbnail_path;
+                }
+            }
+        }
+
+        $paths = array_merge(
+            $paths,
+            DB::table('messages')
+                ->where(fn ($query) => $query
+                    ->where('sender_id', $user->id)
+                    ->orWhere('receiver_id', $user->id))
+                ->pluck('attachment_path')
+                ->all(),
+        );
+
+        $reports = DB::table('reports')
+            ->where(fn ($query) => $query
+                ->where('reported_by', $user->id)
+                ->orWhere('reported_user', $user->id))
+            ->pluck('evidence_paths');
+
+        foreach ($reports as $evidencePaths) {
+            $evidencePaths = is_array($evidencePaths)
+                ? $evidencePaths
+                : json_decode((string) $evidencePaths, true);
+
+            if (is_array($evidencePaths)) {
+                $paths = array_merge($paths, $evidencePaths);
+            }
+        }
+
+        return array_values(array_unique(array_filter(
+            $paths,
+            fn ($path) => is_string($path)
+                && $path !== ''
+                && ! Str::startsWith($path, ['http://', 'https://']),
+        )));
     }
 
     /**

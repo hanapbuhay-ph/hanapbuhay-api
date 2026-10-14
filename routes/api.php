@@ -82,6 +82,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::get('user/two-factor', [AuthController::class, 'twoFactorPreference']);
     Route::post('user/two-factor', [AuthController::class, 'updateTwoFactorPreference']);
     // Account deletion (user side)
+    Route::get('user/delete-account', [AuthController::class, 'deletionRequestStatus']);
     Route::post('user/delete-account', [AuthController::class, 'requestDeletion']);
     Route::delete('user/delete-account', [AuthController::class, 'cancelDeletionRequest']);
 

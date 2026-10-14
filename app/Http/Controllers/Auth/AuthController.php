@@ -457,6 +457,23 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Account deletion requested. An admin will process your request within 30 days.',
+            'data' => [
+                'deletion_requested_at' => $request->user()->fresh()->deletion_requested_at?->toIso8601String(),
+            ],
+        ]);
+    }
+
+    /**
+     * GET /api/user/delete-account
+     * Return the current user's deletion request status.
+     */
+    public function deletionRequestStatus(Request $request): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'deletion_requested_at' => $request->user()->deletion_requested_at?->toIso8601String(),
+            ],
         ]);
     }
 
@@ -478,6 +495,9 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Deletion request cancelled.',
+            'data' => [
+                'deletion_requested_at' => null,
+            ],
         ]);
     }
 

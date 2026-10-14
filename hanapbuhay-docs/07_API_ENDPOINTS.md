@@ -775,6 +775,27 @@ Security and transactional account emails are not controlled by these settings.
 Booking-update emails are queued and require a configured mail transport and
 running queue worker to be delivered.
 
+### Account Deletion Request
+```
+GET /api/user/delete-account
+POST /api/user/delete-account
+DELETE /api/user/delete-account
+(Protected)
+```
+
+GET returns the authenticated user's request timestamp, or `null` when there
+is no pending request. POST submits an idempotent request for admin review;
+the account is not deleted immediately. DELETE cancels a pending request.
+
+```json
+{
+    "success": true,
+    "data": {
+        "deletion_requested_at": "2026-10-14T02:00:00+00:00"
+    }
+}
+```
+
 ---
 
 ## SECTION D: WORKER FEATURES

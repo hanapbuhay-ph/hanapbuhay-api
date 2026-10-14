@@ -21,13 +21,14 @@ function makeAdminForDeletion(): User
 it('authenticated user can submit an account deletion request', function () {
     $user = makeBookingClient();
 
-    $this->actingAs($user)
+    $response = $this->actingAs($user)
         ->postJson('/api/user/delete-account')
         ->assertStatus(200)
         ->assertJsonPath('success', true)
         ->assertJsonPath('message', 'Account deletion requested. An admin will process your request within 30 days.');
 
     expect($user->fresh()->deletion_requested_at)->not->toBeNull();
+    expect($response->json('data.deletion_requested_at'))->toBeString();
 });
 
 it('submitting deletion request twice is idempotent', function () {
@@ -43,8 +44,37 @@ it('submitting deletion request twice is idempotent', function () {
         ->toBe($firstTimestamp->toDateTimeString());
 });
 
+it('authenticated user can retrieve deletion request status', function () {
+    $user = makeBookingClient();
+
+    $this->actingAs($user)
+        ->getJson('/api/user/delete-account')
+        ->assertOk()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('data.deletion_requested_at', null);
+
+    $user->update(['deletion_requested_at' => now()]);
+
+    $this->actingAs($user)
+        ->getJson('/api/user/delete-account')
+        ->assertOk()
+        ->assertJsonPath('data.deletion_requested_at', $user->fresh()->deletion_requested_at->toIso8601String());
+});
+
 it('returns 401 when unauthenticated on delete-account', function () {
     $this->postJson('/api/user/delete-account')->assertStatus(401);
+    $this->getJson('/api/user/delete-account')->assertStatus(401);
+});
+
+it('worker can submit an account deletion request', function () {
+    $worker = User::factory()->create(['role' => 'worker']);
+
+    $this->actingAs($worker)
+        ->postJson('/api/user/delete-account')
+        ->assertOk()
+        ->assertJsonPath('success', true);
+
+    expect($worker->fresh()->deletion_requested_at)->not->toBeNull();
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
