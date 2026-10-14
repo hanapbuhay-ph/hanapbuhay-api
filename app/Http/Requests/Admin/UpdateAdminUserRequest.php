@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Models\User;
 use App\Rules\PhilippineMobileNumber;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -24,6 +25,11 @@ class UpdateAdminUserRequest extends FormRequest
 
     public function rules(): array
     {
+        $target = User::find($this->route('id'));
+        $assignableRoles = $target !== null && ! in_array($target->role, ['client', 'worker'], true)
+            ? ['client', 'worker', 'admin']
+            : ['client', 'worker'];
+
         return [
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'email' => [
@@ -35,9 +41,16 @@ class UpdateAdminUserRequest extends FormRequest
             ],
             'password' => ['sometimes', 'nullable', 'string', 'min:8', 'confirmed'],
             'mobile_number' => ['sometimes', 'nullable', 'string', new PhilippineMobileNumber],
-            'role' => ['sometimes', Rule::in(['client', 'worker', 'admin'])],
+            'role' => ['sometimes', Rule::in($assignableRoles)],
             'barangay_id' => ['sometimes', 'required', 'integer', 'exists:barangays,id'],
             'is_active' => ['sometimes', 'boolean'],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'role.in' => 'Client or worker accounts cannot be changed to an admin role.',
         ];
     }
 }

@@ -379,6 +379,16 @@ class AdminService
         $user = User::findOrFail($userId);
         $this->assertSuperAdminManageableBy($user, $admin);
         $previousRole = $user->role;
+        if (
+            in_array($previousRole, ['client', 'worker'], true)
+            && ($attributes['role'] ?? $previousRole) === 'admin'
+        ) {
+            throw new BusinessRuleException(
+                'Client or worker accounts cannot be changed to an admin role.',
+                403
+            );
+        }
+
         $previousValues = [];
         foreach (array_keys($attributes) as $field) {
             if (! in_array($field, ['password', 'password_confirmation'], true)) {

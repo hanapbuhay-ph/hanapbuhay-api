@@ -1,7 +1,7 @@
 <?php
 
-use App\Models\Barangay;
 use App\Models\AdminAuditLog;
+use App\Models\Barangay;
 use App\Models\Booking;
 use App\Models\JobPost;
 use App\Models\RatingReview;
@@ -306,6 +306,21 @@ it('admins cannot assign the super admin role through user management', function
         ])
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['role']);
+});
+
+it('admins cannot promote a client or worker to admin through user management', function () use ($makeAdmin) {
+    $admin = $makeAdmin();
+
+    foreach (['client', 'worker'] as $role) {
+        $user = User::factory()->create(['role' => $role]);
+
+        $this->actingAs($admin)
+            ->patchJson("/api/admin/users/{$user->id}", ['role' => 'admin'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['role']);
+
+        expect($user->fresh()->role)->toBe($role);
+    }
 });
 
 it('super admin can update its own account credentials', function () {
