@@ -84,7 +84,7 @@ Using Laravel 13 and Laravel Sanctum, create:
    (must exist in barangays table). Create the user,
    generate a 6-digit OTP, save it to an "otp_codes"
    table (email, code, type=email_verification,
-   expires_at = now + 10 minutes), and send it via
+   expires_at = now + 5 minutes), and send it via
    Laravel Mail.
 2. An EmailVerificationController with verify() that
    checks the OTP against otp_codes, marks
@@ -461,4 +461,3 @@ several prompts in a long session.
 ```
 
 ---
-

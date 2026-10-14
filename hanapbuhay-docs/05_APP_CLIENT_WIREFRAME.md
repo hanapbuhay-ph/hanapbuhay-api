@@ -668,9 +668,8 @@ This is EMAIL OTP — NOT SMS.
 The instructional text must say
 "email address" never "phone number".
 The code is sent via Laravel Mail + Brevo.
-Code expires in 10 minutes.
-Timer shown is resend cooldown (60 seconds)
-not expiry timer.
+Code expires in 5 minutes.
+Show the code-expiry countdown separately from the 60-second resend cooldown.
 ```
 
 ### Interactions

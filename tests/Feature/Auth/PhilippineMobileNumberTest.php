@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Barangay;
+use App\Models\OtpCode;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -17,7 +18,8 @@ it('accepts and stores Philippine mobile numbers in national format during regis
         'mobile_number' => $mobileNumber,
         'role' => 'client',
         'barangay_id' => $barangay->id,
-    ])->assertCreated();
+    ])->assertCreated()
+        ->assertJsonPath('data.otp_expires_in_seconds', OtpCode::VALIDITY_SECONDS);
 
     expect(User::findOrFail($response->json('data.user.id'))->mobile_number)
         ->toBe('09171234567');

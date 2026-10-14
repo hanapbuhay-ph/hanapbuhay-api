@@ -535,7 +535,7 @@ Schema::create('otp_codes', function (Blueprint $table) {
     ]);
     $table->boolean('is_used')->default(false);
     $table->timestamp('expires_at');
-    // OTP valid for 10 minutes
+    // OTP valid for 5 minutes
     $table->timestamps();
 });
 ```

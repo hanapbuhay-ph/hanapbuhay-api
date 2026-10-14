@@ -210,7 +210,7 @@ Side Effects:
   If role = worker: creates worker_profile
   Generates 6-digit OTP
   Sends OTP to user's email via Laravel Mail
-  OTP expires in 10 minutes
+  OTP expires in 5 minutes
 
 Response 422 (validation failed):
 {
@@ -514,7 +514,7 @@ Response 200:
 Note: reset_token is a short-lived temporary
 token (stored in otp_codes or cache).
 Used in next step to authorize password reset.
-Expires in 15 minutes.
+Expires 10 minutes after OTP verification.
 ```
 
 ---

@@ -13,6 +13,7 @@ use App\Http\Requests\Auth\ResetPasswordRequest;
 use App\Http\Requests\Auth\UpdateProfileRequest;
 use App\Http\Requests\Auth\VerifyResetOtpRequest;
 use App\Mail\OtpMail;
+use App\Models\OtpCode;
 use App\Models\User;
 use App\Services\Auth\AccountDeletionService;
 use App\Services\Auth\AuthService;
@@ -121,6 +122,7 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'If that email is registered, a password reset code has been sent.',
+            'data' => ['otp_expires_in_seconds' => OtpCode::VALIDITY_SECONDS],
         ]);
     }
 
@@ -144,6 +146,7 @@ class AuthController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Verification code resent to your email.',
+                'data' => ['otp_expires_in_seconds' => OtpCode::VALIDITY_SECONDS],
             ]);
         }
 
@@ -151,6 +154,7 @@ class AuthController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Your email is already verified. Please log in.',
+                'data' => ['otp_expires_in_seconds' => 0],
             ]);
         }
 
@@ -161,6 +165,7 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Verification code resent to your email.',
+            'data' => ['otp_expires_in_seconds' => OtpCode::VALIDITY_SECONDS],
         ]);
     }
 
@@ -210,7 +215,10 @@ class AuthController extends Controller
                 return response()->json([
                     'success' => true,
                     'message' => 'A verification code has been sent to your email.',
-                    'data' => ['requiresOtp' => true],
+                    'data' => [
+                        'requiresOtp' => true,
+                        'otp_expires_in_seconds' => OtpCode::VALIDITY_SECONDS,
+                    ],
                 ]);
             }
 
@@ -343,6 +351,7 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'A new verification code has been sent.',
+            'data' => ['otp_expires_in_seconds' => OtpCode::VALIDITY_SECONDS],
         ]);
     }
 

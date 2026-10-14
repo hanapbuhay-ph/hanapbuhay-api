@@ -46,7 +46,7 @@ class RegisterController extends Controller
                     'email' => $user->email,
                     'code' => str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT),
                     'type' => 'email_verification',
-                    'expires_at' => now()->addMinutes(10),
+                    'expires_at' => now()->addMinutes(OtpCode::VALIDITY_MINUTES),
                 ]);
 
                 app(AdminNotificationService::class)->create(
@@ -75,6 +75,7 @@ class RegisterController extends Controller
                         'email_verified_at' => null,
                         'is_google_account' => false,
                     ],
+                    'otp_expires_in_seconds' => OtpCode::VALIDITY_SECONDS,
                 ],
             ], 201);
         } catch (Throwable $e) {

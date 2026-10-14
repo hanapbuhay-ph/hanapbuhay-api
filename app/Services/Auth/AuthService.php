@@ -140,7 +140,7 @@ class AuthService
                 'email' => $email,
                 'code' => $code,
                 'type' => 'login_2fa',
-                'expires_at' => Carbon::now()->addMinutes(10),
+                'expires_at' => Carbon::now()->addMinutes(OtpCode::VALIDITY_MINUTES),
             ]);
             return $code;
         });
@@ -270,7 +270,7 @@ class AuthService
                 'email'      => $email,
                 'code'       => $code,
                 'type'       => 'email_verification',
-                'expires_at' => Carbon::now()->addMinutes(10),
+                'expires_at' => Carbon::now()->addMinutes(OtpCode::VALIDITY_MINUTES),
                 'used_at'    => null,
             ]);
 
@@ -308,7 +308,7 @@ class AuthService
                 'email'      => $email,
                 'code'       => $code,
                 'type'       => 'password_reset',
-                'expires_at' => Carbon::now()->addMinutes(10),
+                'expires_at' => Carbon::now()->addMinutes(OtpCode::VALIDITY_MINUTES),
                 'used_at'    => null,
             ]);
 
@@ -334,6 +334,7 @@ class AuthService
 
         $otp = OtpCode::validFor($email, 'password_reset')
             ->where('code', $code)
+            ->whereNull('reset_token')
             ->latest()
             ->first();
 
@@ -343,7 +344,10 @@ class AuthService
 
         $resetToken = Str::random(64);
 
-        $otp->update(['reset_token' => $resetToken]);
+        $otp->update([
+            'reset_token' => $resetToken,
+            'expires_at' => Carbon::now()->addMinutes(OtpCode::RESET_TOKEN_VALIDITY_MINUTES),
+        ]);
 
         return $resetToken;
     }
@@ -362,8 +366,11 @@ class AuthService
             return false;
         }
 
-        $otp = OtpCode::validFor($email, 'password_reset')
+        $otp = OtpCode::where('email', $email)
+            ->where('type', 'password_reset')
             ->where('reset_token', $resetToken)
+            ->whereNull('used_at')
+            ->where('expires_at', '>', Carbon::now())
             ->latest()
             ->first();
 

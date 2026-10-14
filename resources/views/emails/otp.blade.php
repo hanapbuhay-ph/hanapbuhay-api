@@ -15,7 +15,7 @@
             {{ $code }}
         </div>
         <p style="color: #666; font-size: 14px;">
-            This code expires in <strong>10 minutes</strong>.
+            This code expires in <strong>{{ $expiryMinutes }} minutes</strong>.
             Do not share it with anyone.
         </p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">

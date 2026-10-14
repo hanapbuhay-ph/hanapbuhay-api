@@ -18,7 +18,7 @@ it('preserves an external profile photo URL when verifying email', function () {
         'email' => $user->email,
         'code' => '123456',
         'type' => 'email_verification',
-        'expires_at' => Carbon::now()->addMinutes(10),
+        'expires_at' => Carbon::now()->addMinutes(OtpCode::VALIDITY_MINUTES),
     ]);
 
     $this->postJson('/api/auth/email/verify', [
@@ -40,7 +40,7 @@ it('returns a storage URL for a stored profile photo when verifying email', func
         'email' => $user->email,
         'code' => '123456',
         'type' => 'email_verification',
-        'expires_at' => Carbon::now()->addMinutes(10),
+        'expires_at' => Carbon::now()->addMinutes(OtpCode::VALIDITY_MINUTES),
     ]);
 
     $this->postJson('/api/auth/email/verify', [

@@ -199,7 +199,7 @@ Side Effects:
 - Creates user record
 - If role = 'worker': creates worker_profile record
 - Sends OTP email via Brevo
-- OTP valid for 10 minutes
+- OTP valid for 5 minutes
 ```
 
 ---
@@ -417,7 +417,10 @@ Request Body:
 Success Response 200:
 {
     "success": true,
-    "message": "Password reset code sent to your email"
+    "message": "If that email is registered, a password reset code has been sent.",
+    "data": {
+        "otp_expires_in_seconds": 300
+    }
 }
 
 Note: Always returns 200 even if email
@@ -449,7 +452,8 @@ Success Response 200:
 
 Note: reset_token is a short-lived token
 used in the next step to authorize
-the password reset.
+the password reset. It expires 10 minutes
+after the OTP is verified.
 ```
 
 ---

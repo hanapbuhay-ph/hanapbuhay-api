@@ -141,6 +141,11 @@ php artisan serve
 php artisan queue:work
 ```
 
+Queue workers are long-running processes and do not automatically load code
+changes. After deploying application changes, run `php artisan queue:restart`
+and ensure your process manager starts the worker again. In local development,
+stop and start the worker after changing queued mail or notification code.
+
 ### Soketi WebSocket server (required for live tracking and real-time messaging)
 ```bash
 # Install Soketi globally (one-time)

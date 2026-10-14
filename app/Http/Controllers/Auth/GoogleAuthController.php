@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\CompleteProfileRequest;
 use App\Mail\OtpMail;
+use App\Models\OtpCode;
 use App\Models\User;
 use App\Services\Auth\AuthService;
 use App\Services\SecurityEventLogger;
@@ -156,7 +157,7 @@ class GoogleAuthController extends Controller
             RateLimiter::clear("{$loginKey}:attempts");
 
             if ($user->two_factor_enabled) {
-                $code = $this->authService->resendLoginOtp($user->email);
+                $code = $this->authService->resendLoginOtp($user->email, $adminPortal);
                 $this->securityEventLogger->record(
                     'google_login_otp_challenge',
                     'success',
@@ -175,6 +176,7 @@ class GoogleAuthController extends Controller
                     'message' => 'A verification code has been sent to your email.',
                     'data' => [
                         'requiresOtp' => true,
+                        'otp_expires_in_seconds' => OtpCode::VALIDITY_SECONDS,
                         'is_new_user' => $isNewUser,
                         'user' => $this->authService->formatUser($user),
                     ],
