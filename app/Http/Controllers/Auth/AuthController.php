@@ -24,12 +24,17 @@ use Illuminate\Support\Facades\RateLimiter;
 
 class AuthController extends Controller
 {
+    private const LOGIN_MAX_ATTEMPTS = 5;
+
+    private const LOGIN_LOCKOUT_SECONDS = 900;
+
+    private const PASSWORD_CHANGE_COOLDOWN_SECONDS = 60;
+
     public function __construct(
         private readonly AuthService $authService,
         private readonly AccountDeletionService $deletionService,
         private readonly SecurityEventLogger $securityEventLogger,
-    ) {
-    }
+    ) {}
 
     public function resetPassword(ResetPasswordRequest $request): JsonResponse
     {
@@ -87,14 +92,14 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Code verified. You can now reset your password.',
-            'data'    => ['reset_token' => $resetToken],
+            'data' => ['reset_token' => $resetToken],
         ]);
     }
 
     public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
     {
         $email = $request->validated('email');
-        $key   = 'forgot-password:' . $email;
+        $key = 'forgot-password:'.$email;
 
         if (RateLimiter::tooManyAttempts($key, 3)) {
             return response()->json([
@@ -122,7 +127,7 @@ class AuthController extends Controller
     public function resendOtp(ResendOtpRequest $request): JsonResponse
     {
         $email = $request->validated('email');
-        $key   = 'resend-otp:' . $email;
+        $key = 'resend-otp:'.$email;
 
         if (RateLimiter::tooManyAttempts($key, 3)) {
             return response()->json([
@@ -166,9 +171,20 @@ class AuthController extends Controller
 
     public function login(LoginRequest $request, bool $adminPortal = false): JsonResponse
     {
+        $email = $request->validated('email');
+        $loginKey = $this->loginRateLimitKey(mb_strtolower($email), $request->ip());
+        $attemptsKey = "{$loginKey}:attempts";
+        $lockoutKey = "{$loginKey}:lockout";
+        if (RateLimiter::tooManyAttempts($lockoutKey, 1)) {
+            return $this->rateLimitedResponse(
+                'Too many failed login attempts. Try again when the countdown ends.',
+                RateLimiter::availableIn($lockoutKey),
+            );
+        }
+
         try {
             $result = $this->authService->login(
-                $request->validated('email'),
+                $email,
                 $request->validated('password'),
                 $request->validated('device_name'),
                 $request->ip(),
@@ -188,6 +204,8 @@ class AuthController extends Controller
                 Mail::to($request->validated('email'))->queue(
                     new OtpMail($result['otp'], 'Your Login Verification Code')
                 );
+                RateLimiter::clear($attemptsKey);
+                RateLimiter::clear($lockoutKey);
 
                 return response()->json([
                     'success' => true,
@@ -205,17 +223,19 @@ class AuthController extends Controller
                 $request->ip(),
                 $request->userAgent(),
             );
+            RateLimiter::clear($attemptsKey);
+            RateLimiter::clear($lockoutKey);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Login successful.',
-                'data'    => [
+                'data' => [
                     'token' => $result['token'],
-                    'user'  => $this->authService->formatUser($result['user']),
+                    'user' => $this->authService->formatUser($result['user']),
                 ],
             ]);
         } catch (InvalidCredentialsException $e) {
-            $email = $request->validated('email');
+            RateLimiter::hit($attemptsKey, self::LOGIN_LOCKOUT_SECONDS);
             $this->securityEventLogger->record(
                 'login',
                 'failure',
@@ -226,12 +246,25 @@ class AuthController extends Controller
                 $request->userAgent(),
             );
 
+            if (RateLimiter::attempts($attemptsKey) >= self::LOGIN_MAX_ATTEMPTS) {
+                RateLimiter::hit($lockoutKey, self::LOGIN_LOCKOUT_SECONDS);
+
+                return $this->rateLimitedResponse(
+                    'Too many failed login attempts. Try again when the countdown ends.',
+                    RateLimiter::availableIn($lockoutKey),
+                );
+            }
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
+                'data' => [
+                    'failed_attempts_remaining' => self::LOGIN_MAX_ATTEMPTS - RateLimiter::attempts($attemptsKey),
+                ],
             ], 401);
         } catch (EmailNotVerifiedException $e) {
-            $email = $request->validated('email');
+            RateLimiter::clear($attemptsKey);
+            RateLimiter::clear($lockoutKey);
             $this->securityEventLogger->record(
                 'login',
                 'failure',
@@ -331,7 +364,7 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => $this->authService->formatUser($user),
+            'data' => $this->authService->formatUser($user),
         ]);
     }
 
@@ -346,7 +379,7 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Profile updated successfully.',
-            'data'    => ['user' => $this->authService->formatUser($user)],
+            'data' => ['user' => $this->authService->formatUser($user)],
         ]);
     }
 
@@ -356,6 +389,16 @@ class AuthController extends Controller
      */
     public function changePassword(ChangePasswordRequest $request): JsonResponse
     {
+        $cooldownKey = $this->passwordChangeRateLimitKey($request->user()->id);
+        if (RateLimiter::tooManyAttempts($cooldownKey, 1)) {
+            return $this->rateLimitedResponse(
+                'Please wait before attempting another password change.',
+                RateLimiter::availableIn($cooldownKey),
+            );
+        }
+
+        RateLimiter::hit($cooldownKey, self::PASSWORD_CHANGE_COOLDOWN_SECONDS);
+
         $result = $this->authService->changePassword(
             $request->user(),
             $request->input('current_password'),
@@ -375,13 +418,54 @@ class AuthController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => $result['message'],
+                'data' => [
+                    'retry_after_seconds' => RateLimiter::availableIn($cooldownKey),
+                ],
             ], 422);
         }
 
         return response()->json([
             'success' => true,
             'message' => $result['message'],
+            'data' => [
+                'retry_after_seconds' => RateLimiter::availableIn($cooldownKey),
+            ],
         ]);
+    }
+
+    public function passwordChangeCooldown(Request $request): JsonResponse
+    {
+        $retryAfter = RateLimiter::availableIn($this->passwordChangeRateLimitKey($request->user()->id));
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'retry_after_seconds' => $retryAfter,
+            ],
+        ]);
+    }
+
+    private function loginRateLimitKey(string $email, ?string $ipAddress): string
+    {
+        return 'login:'.hash('sha256', $email.'|'.($ipAddress ?? 'unknown'));
+    }
+
+    private function passwordChangeRateLimitKey(int $userId): string
+    {
+        return "password-change:{$userId}";
+    }
+
+    private function rateLimitedResponse(string $message, int $retryAfter): JsonResponse
+    {
+        $retryAfter = max(1, $retryAfter);
+
+        return response()->json([
+            'success' => false,
+            'message' => $message,
+            'data' => [
+                'retry_after_seconds' => $retryAfter,
+            ],
+        ], 429)->header('Retry-After', (string) $retryAfter);
     }
 
     /**
@@ -391,7 +475,7 @@ class AuthController extends Controller
     public function sessions(Request $request): JsonResponse
     {
         $currentToken = $request->user()->currentAccessToken();
-        $currentId    = $currentToken?->id;
+        $currentId = $currentToken?->id;
 
         $sessions = $this->authService->getSessions(
             $request->user(),
@@ -400,7 +484,7 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => $sessions,
+            'data' => $sessions,
         ]);
     }
 
@@ -411,7 +495,7 @@ class AuthController extends Controller
     public function revokeSession(Request $request, int $tokenId): JsonResponse
     {
         $currentToken = $request->user()->currentAccessToken();
-        $currentId    = $currentToken?->id;
+        $currentId = $currentToken?->id;
 
         $result = $this->authService->revokeSession(
             $request->user(),
@@ -507,7 +591,7 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => $preferences,
+            'data' => $preferences,
         ]);
     }
 
@@ -515,10 +599,10 @@ class AuthController extends Controller
     {
         $validated = $request->validate([
             'booking_updates' => 'sometimes|boolean',
-            'messages'        => 'sometimes|boolean',
-            'promotions'      => 'sometimes|boolean',
-            'push'            => 'sometimes|boolean',
-            'email'           => 'sometimes|boolean',
+            'messages' => 'sometimes|boolean',
+            'promotions' => 'sometimes|boolean',
+            'push' => 'sometimes|boolean',
+            'email' => 'sometimes|boolean',
         ]);
 
         $user = $this->authService->updateNotificationPreferences($request->user(), $validated);
@@ -526,7 +610,7 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Notification preferences updated.',
-            'data'    => $this->authService->getNotificationPreferences($user),
+            'data' => $this->authService->getNotificationPreferences($user),
         ]);
     }
 

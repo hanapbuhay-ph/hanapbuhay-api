@@ -71,6 +71,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::post('auth/google/complete-profile', [GoogleAuthController::class, 'completeProfile']);
     Route::get('user', [AuthController::class, 'me']);
     Route::post('user/profile', [AuthController::class, 'updateProfile']);
+    Route::get('user/password/cooldown', [AuthController::class, 'passwordChangeCooldown']);
     Route::post('user/password', [AuthController::class, 'changePassword']);
     Route::get('user/sessions', [AuthController::class, 'sessions']);
     Route::post('user/sessions/revoke-all', [AuthController::class, 'revokeAllSessions']);

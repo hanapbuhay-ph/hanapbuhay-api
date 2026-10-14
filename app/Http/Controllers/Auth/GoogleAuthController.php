@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\RateLimiter;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Throwable;
 
@@ -80,6 +81,21 @@ class GoogleAuthController extends Controller
             ], 401);
         }
 
+        $email = mb_strtolower($tokenInfo['email']);
+        $loginKey = 'login:'.hash('sha256', $email.'|'.($request->ip() ?? 'unknown'));
+        $lockoutKey = "{$loginKey}:lockout";
+        if (RateLimiter::tooManyAttempts($lockoutKey, 1)) {
+            $retryAfter = max(1, RateLimiter::availableIn($lockoutKey));
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Too many failed login attempts. Try again when the countdown ends.',
+                'data' => [
+                    'retry_after_seconds' => $retryAfter,
+                ],
+            ], 429)->header('Retry-After', (string) $retryAfter);
+        }
+
         try {
             $isNewUser = false;
             $user = DB::transaction(function () use ($tokenInfo, $adminPortal, &$isNewUser): User {
@@ -136,6 +152,8 @@ class GoogleAuthController extends Controller
                     'email_verified_at' => now(),
                 ]);
             });
+
+            RateLimiter::clear("{$loginKey}:attempts");
 
             if ($user->two_factor_enabled) {
                 $code = $this->authService->resendLoginOtp($user->email);

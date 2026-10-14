@@ -215,6 +215,11 @@ Request Body:
     "password": "password123"
 }
 
+After five consecutive failed password attempts, mobile and admin login are
+locked for 15 minutes, including Google sign-in for the same account and IP.
+The response includes `data.retry_after_seconds` and a `Retry-After` header.
+A successful login clears the failed-attempt counter.
+
 Success Response 200:
 {
     "success": true,
@@ -555,6 +560,9 @@ Response 200:
 ## C3. Change Password
 
 ```
+GET /api/user/password/cooldown
+(Protected; returns the remaining cooldown seconds, or 0)
+
 POST /api/user/password
 (Protected)
 
@@ -576,6 +584,11 @@ Error 422 (wrong current password):
     "success": false,
     "message": "Current password is incorrect"
 }
+
+Each valid password-change submission starts a one-minute cooldown. Submissions
+during that period return HTTP 429 with `data.retry_after_seconds` and a
+`Retry-After` header. The cooldown endpoint lets clients resume the countdown
+after reopening the password screen.
 ```
 
 ---
