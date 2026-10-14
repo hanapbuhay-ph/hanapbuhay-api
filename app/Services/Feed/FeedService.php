@@ -43,7 +43,10 @@ class FeedService
                 'images',
             ])
             // Also require worker account to be active
-            ->whereHas('workerProfile.user', fn ($q) => $q->where('is_active', true));
+            ->whereHas('workerProfile.user', fn ($q) => $q->where('is_active', true))
+            ->whereHas('workerProfile', fn ($q) => $q
+                ->whereNull('trust_tier')
+                ->orWhere('trust_tier', '!=', 'revoked'));
 
         // ── Filters ──────────────────────────────────────────────────────────
 

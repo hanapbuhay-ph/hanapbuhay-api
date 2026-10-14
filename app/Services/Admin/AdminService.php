@@ -946,6 +946,10 @@ class AdminService
             'verification_remarks' => $remarks,
         ]);
 
+        $notificationMessage = $tier === 'revoked'
+            ? 'Your trust tier has been revoked. Your job posts will no longer appear in the client home feed.'
+            : "Your trust tier has been updated to {$tier}.";
+
         $this->audit($admin, 'update_trust_tier', 'WorkerProfile', $profile->id, [
             'worker_id' => $profile->user_id,
             'previous_tier' => $previous,
@@ -956,14 +960,18 @@ class AdminService
         $this->notificationService->notify(
             $profile->user,
             'Trust Tier Updated',
-            "Your trust tier has been updated to {$tier}.",
+            $notificationMessage,
             'trust_tier_updated',
-            ['type' => 'trust_tier_updated', 'tier' => $tier],
+            [
+                'type' => 'trust_tier_updated',
+                'tier' => $tier,
+                'posts_hidden_from_client_feed' => $tier === 'revoked',
+            ],
         );
         $this->notificationService->sendPush(
             $profile->user,
             'Trust Tier Updated',
-            "Your trust tier has been updated to {$tier}.",
+            $notificationMessage,
             ['type' => 'trust_tier_updated', 'tier' => $tier],
         );
 

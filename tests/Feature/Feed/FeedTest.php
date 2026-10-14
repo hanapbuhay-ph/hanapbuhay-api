@@ -120,7 +120,7 @@ it('shows posts from flagged workers in the client feed', function () {
         ->toContain($profile->jobPosts()->first()->id);
 });
 
-it('shows posts from revoked workers in the client feed', function () {
+it('does not show posts from revoked workers in the client feed', function () {
     $client = makeFeedClient();
     [, $profile] = makeWorkerWithPost();
 
@@ -129,7 +129,7 @@ it('shows posts from revoked workers in the client feed', function () {
     $response = $this->actingAs($client)->getJson('/api/feed')->assertStatus(200);
 
     expect(collect($response->json('data.posts'))->pluck('job_post_id'))
-        ->toContain($profile->jobPosts()->first()->id);
+        ->not->toContain($profile->jobPosts()->first()->id);
 });
 
 it('does not show inactive (soft-deleted) job posts', function () {
