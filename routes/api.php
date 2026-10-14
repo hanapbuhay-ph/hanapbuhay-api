@@ -49,6 +49,10 @@ Route::prefix('auth')->group(function () {
     Route::post('login/verify-otp', [AuthController::class, 'verifyLoginOtp']);
     Route::post('login/resend-otp', [AuthController::class, 'resendLoginOtp']);
     Route::post('google', [GoogleAuthController::class, 'handleGoogleToken']);
+    Route::post('admin/login', [AuthController::class, 'adminLogin']);
+    Route::post('admin/login/verify-otp', [AuthController::class, 'verifyAdminLoginOtp']);
+    Route::post('admin/login/resend-otp', [AuthController::class, 'resendAdminLoginOtp']);
+    Route::post('admin/google', [GoogleAuthController::class, 'handleAdminGoogleToken']);
     Route::post('email/verify', [EmailVerificationController::class, 'verify']);
     Route::post('email/resend-otp', [AuthController::class, 'resendOtp']);
     Route::post('password/forgot', [AuthController::class, 'forgotPassword']);

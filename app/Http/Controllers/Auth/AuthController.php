@@ -159,7 +159,12 @@ class AuthController extends Controller
         ]);
     }
 
-    public function login(LoginRequest $request): JsonResponse
+    public function adminLogin(LoginRequest $request): JsonResponse
+    {
+        return $this->login($request, true);
+    }
+
+    public function login(LoginRequest $request, bool $adminPortal = false): JsonResponse
     {
         try {
             $result = $this->authService->login(
@@ -167,6 +172,7 @@ class AuthController extends Controller
                 $request->validated('password'),
                 $request->validated('device_name'),
                 $request->ip(),
+                $adminPortal,
             );
 
             if ($result['requires_otp'] ?? false) {
@@ -243,7 +249,12 @@ class AuthController extends Controller
         }
     }
 
-    public function verifyLoginOtp(Request $request): JsonResponse
+    public function verifyAdminLoginOtp(Request $request): JsonResponse
+    {
+        return $this->verifyLoginOtp($request, true);
+    }
+
+    public function verifyLoginOtp(Request $request, bool $adminPortal = false): JsonResponse
     {
         $validated = $request->validate([
             'email' => ['required', 'email'],
@@ -256,6 +267,7 @@ class AuthController extends Controller
             $validated['code'],
             $validated['device_name'] ?? null,
             $request->ip(),
+            $adminPortal,
         );
         $this->securityEventLogger->record(
             'login_otp_verification',
@@ -281,10 +293,15 @@ class AuthController extends Controller
         ]);
     }
 
-    public function resendLoginOtp(Request $request): JsonResponse
+    public function resendAdminLoginOtp(Request $request): JsonResponse
+    {
+        return $this->resendLoginOtp($request, true);
+    }
+
+    public function resendLoginOtp(Request $request, bool $adminPortal = false): JsonResponse
     {
         $validated = $request->validate(['email' => ['required', 'email']]);
-        $code = $this->authService->resendLoginOtp($validated['email']);
+        $code = $this->authService->resendLoginOtp($validated['email'], $adminPortal);
 
         if ($code !== null) {
             Mail::to($validated['email'])->queue(new OtpMail($code, 'Your Login Verification Code'));

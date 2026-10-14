@@ -24,13 +24,24 @@ class AuthService
      * @throws InvalidCredentialsException
      * @throws EmailNotVerifiedException
      */
-    public function login(string $email, string $password, ?string $deviceName = null, ?string $ipAddress = null): array
+    public function login(
+        string $email,
+        string $password,
+        ?string $deviceName = null,
+        ?string $ipAddress = null,
+        bool $adminPortal = false,
+    ): array
     {
         $user = User::with('barangay')->where('email', $email)->first();
 
         // Intentionally the same message for "no account" and "wrong password"
         // to avoid leaking which emails are registered (user enumeration).
-        if ($user === null || $user->is_active === false || ! Hash::check($password, $user->password)) {
+        if (
+            $user === null
+            || $user->is_active === false
+            || $user->isAdmin() !== $adminPortal
+            || ! Hash::check($password, $user->password)
+        ) {
             throw new InvalidCredentialsException();
         }
 
@@ -61,12 +72,24 @@ class AuthService
         ];
     }
 
-    public function verifyLoginOtp(string $email, string $code, ?string $deviceName = null, ?string $ipAddress = null): ?array
+    public function verifyLoginOtp(
+        string $email,
+        string $code,
+        ?string $deviceName = null,
+        ?string $ipAddress = null,
+        bool $adminPortal = false,
+    ): ?array
     {
         $user = User::with('barangay')->where('email', $email)->first();
         $otp = OtpCode::validFor($email, 'login_2fa')->latest()->first();
 
-        if ($user === null || $user->is_active === false || $otp === null || ! hash_equals($otp->code, $code)) {
+        if (
+            $user === null
+            || $user->is_active === false
+            || $user->isAdmin() !== $adminPortal
+            || $otp === null
+            || ! hash_equals($otp->code, $code)
+        ) {
             return null;
         }
 
@@ -91,9 +114,16 @@ class AuthService
         return $accessToken->plainTextToken;
     }
 
-    public function resendLoginOtp(string $email): ?string
+    public function resendLoginOtp(string $email, bool $adminPortal = false): ?string
     {
-        $user = User::where('email', $email)->where('two_factor_enabled', true)->first();
+        $user = User::where('email', $email)
+            ->where('two_factor_enabled', true)
+            ->first();
+
+        if ($user !== null && $user->isAdmin() !== $adminPortal) {
+            return null;
+        }
+
         return $user === null ? null : $this->createLoginOtp($email);
     }
 

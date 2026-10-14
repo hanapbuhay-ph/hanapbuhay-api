@@ -29,14 +29,18 @@ class GoogleAuthController extends Controller
      * Flutter sends the raw ID token — we verify it with Google server-side
      * so the token is never trusted blindly.
      */
-    public function handleGoogleToken(Request $request): JsonResponse
+    public function handleAdminGoogleToken(Request $request): JsonResponse
+    {
+        return $this->handleGoogleToken($request, true);
+    }
+
+    public function handleGoogleToken(Request $request, bool $adminPortal = false): JsonResponse
     {
         $tokenInfo = [];
 
         $request->validate([
             'google_token' => ['required', 'string'],
             'device_name' => ['nullable', 'string', 'max:100'],
-            'admin_only' => ['sometimes', 'boolean'],
         ]);
 
         try {
@@ -78,9 +82,7 @@ class GoogleAuthController extends Controller
 
         try {
             $isNewUser = false;
-            $adminOnly = $request->boolean('admin_only');
-
-            $user = DB::transaction(function () use ($tokenInfo, $adminOnly, &$isNewUser): User {
+            $user = DB::transaction(function () use ($tokenInfo, $adminPortal, &$isNewUser): User {
                 // Look up by google_id first, fall back to email so a user
                 // who previously registered manually can link their Google account.
                 $existing = User::where('google_id', $tokenInfo['sub'])
@@ -94,9 +96,11 @@ class GoogleAuthController extends Controller
                         );
                     }
 
-                    if ($adminOnly && ! $existing->isAdmin()) {
+                    if ($existing->isAdmin() !== $adminPortal) {
                         throw new AccessDeniedHttpException(
-                            'This Google account is not configured as an admin.'
+                            $adminPortal
+                                ? 'This Google account is not configured as an admin.'
+                                : 'Admin accounts must sign in through the admin portal.'
                         );
                     }
 
@@ -111,7 +115,7 @@ class GoogleAuthController extends Controller
                     return $existing->load('barangay');
                 }
 
-                if ($adminOnly) {
+                if ($adminPortal) {
                     throw new AccessDeniedHttpException(
                         'This Google account is not configured as an admin.'
                     );
