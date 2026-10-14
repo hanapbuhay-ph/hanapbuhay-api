@@ -16,6 +16,7 @@ class UpdateTrackingRequest extends FormRequest
         return [
             'latitude'  => ['required', 'numeric', 'between:-90,90'],
             'longitude' => ['required', 'numeric', 'between:-180,180'],
+            'accuracy'  => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100000'],
         ];
     }
 }
