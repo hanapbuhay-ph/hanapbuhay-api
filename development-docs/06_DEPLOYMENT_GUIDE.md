@@ -183,9 +183,24 @@ The service listens on port `10000` and uses Laravel's `/up` health endpoint.
 The container starts the web server and queue worker together. Both stop when
 the free web service sleeps; queued work waits until it wakes again.
 
-Configure durable image storage and Ably credentials separately before
-testing endpoints that upload images or broadcast events. Do not put Ably's
-private API secret in either client app.
+Configure durable media storage before testing upload endpoints. Set
+`MEDIA_DISK=cloudinary` and add `CLOUDINARY_URL` as a Render secret. Public
+profile photos, portfolio photos, and job-post images use normal Cloudinary
+delivery; verification documents, report evidence, and chat attachments use
+authenticated Cloudinary storage and short-lived signed API proxy URLs.
+`PRIVATE_MEDIA_URL_MINUTES` controls the proxy-link lifetime (default: five
+minutes). Keep the Cloudinary API secret server-side; do not place it in either
+client app.
+Direct web access to legacy `storage/verifications`, `storage/reports`, and
+`storage/messages` files is blocked by the Apache and Nginx configurations;
+authorized clients receive temporary API proxy links instead.
+
+Local development defaults to `MEDIA_DISK=public`. Existing local media paths
+continue to resolve from Laravel's public storage disk. Records already stored
+on an old host are not migrated automatically; copy those assets to Cloudinary
+and update their database paths before removing the old storage.
+
+Do not put Ably's private API secret in either client app.
 
 ### Required Render environment settings
 
@@ -207,7 +222,7 @@ QUEUE_CONNECTION=database
 ```
 
 Also configure `APP_KEY`, production mail delivery, Firebase credentials,
-Cloudinary, Ably, and any required Google OAuth settings in Render. Generate
+`MEDIA_DISK=cloudinary`, `CLOUDINARY_URL`, Ably, and any required Google OAuth settings in Render. Generate
 the Laravel application key locally with `php artisan key:generate --show`
 and paste it directly into Render; do not share or commit it.
 

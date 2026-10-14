@@ -163,7 +163,7 @@ class AdminJobPostController extends Controller
                         'email'                => $worker?->email,
                         'mobile_number'        => $worker?->mobile_number,
                         'profile_photo_url'    => $worker?->profile_photo_path
-                            ? asset('storage/' . $worker->profile_photo_path)
+                            ? app(\App\Services\Media\MediaStorageService::class)->publicUrl($worker->profile_photo_path)
                             : null,
                         'barangay'             => $worker?->barangay?->name,
                         'verification_status'  => $post->workerProfile?->verification_status,
@@ -172,9 +172,9 @@ class AdminJobPostController extends Controller
                     ],
                     'images' => $post->images->map(fn ($image) => [
                         'id'             => $image->id,
-                        'image_url'      => asset('storage/' . $image->image_path),
+                        'image_url'      => app(\App\Services\Media\MediaStorageService::class)->publicUrl($image->image_path),
                         'thumbnail_url'  => $image->thumbnail_path
-                            ? asset('storage/' . $image->thumbnail_path)
+                            ? app(\App\Services\Media\MediaStorageService::class)->publicUrl($image->thumbnail_path)
                             : null,
                         'display_order'  => $image->display_order,
                     ])->values(),

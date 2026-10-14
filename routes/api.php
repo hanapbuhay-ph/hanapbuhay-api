@@ -22,6 +22,7 @@ use App\Http\Controllers\Client\ClientController;
 use App\Http\Controllers\Feed\FeedController;
 use App\Http\Controllers\JobPost\JobPostController;
 use App\Http\Controllers\JobPost\JobPostImageController;
+use App\Http\Controllers\MediaController;
 use App\Http\Controllers\Message\MessageController;
 use App\Http\Controllers\Notification\NotificationController;
 use App\Http\Controllers\PresenceController;
@@ -42,6 +43,9 @@ use Illuminate\Support\Facades\Route;
 Route::get('ping', [PublicController::class, 'ping']);
 Route::get('barangays', [PublicController::class, 'barangays']);
 Route::get('service-categories', [PublicController::class, 'serviceCategories']);
+Route::get('media/private', [MediaController::class, 'show'])
+    ->middleware(['signed', 'throttle:60,1'])
+    ->name('media.private');
 
 Route::prefix('auth')->group(function () {
     Route::post('register', [RegisterController::class, 'register']);

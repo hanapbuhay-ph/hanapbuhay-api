@@ -5,7 +5,6 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Facades\Storage;
 
 class JobPostImage extends Model
 {
@@ -22,10 +21,10 @@ class JobPostImage extends Model
     {
         static::deleting(function (self $image): void {
             if ($image->image_path) {
-                Storage::disk('public')->delete($image->image_path);
+                app(\App\Services\Media\MediaStorageService::class)->delete($image->image_path);
             }
             if ($image->thumbnail_path) {
-                Storage::disk('public')->delete($image->thumbnail_path);
+                app(\App\Services\Media\MediaStorageService::class)->delete($image->thumbnail_path);
             }
         });
     }

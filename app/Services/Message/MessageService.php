@@ -7,11 +7,11 @@ use App\Models\Booking;
 use App\Models\Message;
 use App\Models\User;
 use App\Services\Notification\NotificationService;
+use App\Services\Media\MediaStorageService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Throwable;
 
@@ -71,7 +71,7 @@ class MessageService
                     'is_online'         => $otherParty?->last_seen_at?->gte(now()->subMinutes(5)) ?? false,
                     'availability_status' => $otherParty?->workerProfile?->availability_status,
                     'profile_photo_url' => $otherParty?->profile_photo_path
-                        ? asset('storage/' . $otherParty->profile_photo_path)
+                        ? app(MediaStorageService::class)->publicUrl($otherParty->profile_photo_path)
                         : null,
                 ],
                 'last_message'    => $lastMessage?->content,
@@ -161,11 +161,7 @@ class MessageService
             try {
                 $ext            = $attachment->getClientOriginalExtension();
                 $filename       = "messages/{$booking->id}/" . uniqid('msg_', true) . ".{$ext}";
-                $attachmentPath = Storage::disk('public')->putFileAs(
-                    "messages/{$booking->id}",
-                    $attachment,
-                    basename($filename),
-                );
+                $attachmentPath = app(MediaStorageService::class)->storePrivateFile($attachment, $filename);
             } catch (Throwable $e) {
                 Log::error('Message attachment upload failed', [
                     'booking_id' => $booking->id,

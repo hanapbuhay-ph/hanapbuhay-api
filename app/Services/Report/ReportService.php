@@ -7,8 +7,10 @@ use App\Models\Report;
 use App\Models\User;
 use App\Services\AdminNotificationService;
 use App\Services\Notification\NotificationService;
+use App\Services\Media\MediaStorageService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class ReportService
@@ -65,10 +67,17 @@ class ReportService
                 $stored = [];
                 foreach ($photos as $photo) {
                     /** @var UploadedFile $photo */
-                    $stored[] = $photo->store("reports/{$booking->id}", 'public');
+                    $stored[] = app(MediaStorageService::class)->storePrivateFile(
+                        $photo,
+                        "reports/{$booking->id}/".\Illuminate\Support\Str::uuid().'.'.$photo->getClientOriginalExtension(),
+                    );
                 }
                 $evidencePaths = $stored;
             } catch (\Throwable $e) {
+                Log::error('Report evidence upload failed', [
+                    'booking_id' => $booking->id,
+                    'error' => $e->getMessage(),
+                ]);
                 throw new RuntimeException('Failed to store evidence files.');
             }
         }

@@ -76,14 +76,16 @@ it('admin can inspect a thread without marking messages read', function () {
         'is_read' => false,
     ]);
 
-    $this->actingAs($admin)
+    $response = $this->actingAs($admin)
         ->getJson("/api/admin/chat-logs/{$booking->id}")
         ->assertOk()
         ->assertJsonPath('data.messages.0.sender_role', 'client')
         ->assertJsonPath('data.messages.0.is_flagged', false)
-        ->assertJsonPath('data.messages.0.attachment_url', asset('storage/messages/example.jpg'))
         ->assertJsonPath('data.pagination.total', 1);
 
+    expect($response->json('data.messages.0.attachment_url'))
+        ->toContain('/api/media/private?')
+        ->toContain('signature=');
     expect($message->fresh()->is_read)->toBeFalse();
 });
 

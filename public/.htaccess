@@ -5,6 +5,9 @@
 
     RewriteEngine On
 
+    # Sensitive legacy uploads are available only through signed API routes.
+    RewriteRule ^storage/(verifications|reports|messages)(/|$) - [F,L,NC]
+
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]

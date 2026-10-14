@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ReviewVerificationRequest;
 use App\Models\WorkerProfile;
 use App\Services\Admin\AdminService;
+use App\Services\Media\MediaStorageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -140,7 +141,7 @@ class VerificationController extends Controller
                 'id'       => $doc->id,
                 'type'     => $doc->document_type,
                 'status'   => $doc->status,
-                'file_url' => asset('storage/' . $doc->file_path),
+                'file_url' => app(MediaStorageService::class)->privateUrl($doc->file_path),
             ])->values(),
         ];
     }
@@ -153,6 +154,6 @@ class VerificationController extends Controller
 
         return str_starts_with($path, 'http://') || str_starts_with($path, 'https://')
             ? $path
-            : asset('storage/' . $path);
+            : app(MediaStorageService::class)->publicUrl($path);
     }
 }

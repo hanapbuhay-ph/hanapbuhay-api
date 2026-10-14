@@ -115,7 +115,7 @@ class AdminRatingController extends Controller
 
         return str_starts_with($path, 'http://') || str_starts_with($path, 'https://')
             ? $path
-            : asset('storage/' . $path);
+            : app(\App\Services\Media\MediaStorageService::class)->publicUrl($path);
     }
 
     /**

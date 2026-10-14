@@ -7,7 +7,6 @@ use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class AccountDeletionService
 {
@@ -71,13 +70,13 @@ class AccountDeletionService
 
             // Remove stored files
             if ($user->profile_photo_path) {
-                Storage::disk('public')->delete($user->profile_photo_path);
+                app(\App\Services\Media\MediaStorageService::class)->delete($user->profile_photo_path);
             }
 
             if ($user->workerProfile) {
                 $documents = $user->workerProfile->verificationDocuments;
                 foreach ($documents as $doc) {
-                    Storage::disk('public')->delete($doc->file_path);
+                    app(\App\Services\Media\MediaStorageService::class)->delete($doc->file_path);
                 }
                 // Anonymise the worker profile
                 $user->workerProfile->update(['bio' => null]);

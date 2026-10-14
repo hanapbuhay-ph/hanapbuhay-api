@@ -37,6 +37,7 @@ $basePayload = fn (Booking $booking, int $reportedUserId) => [
 
 it('client submits a report with evidence photos → 201, evidence_paths saved', function () use ($makeBooking, $basePayload) {
     Storage::fake('public');
+    Storage::fake('private');
 
     $client = makeBookingClient();
     $worker = makeApprovedBookingWorker();
@@ -241,6 +242,7 @@ it('description exceeding 2000 chars → 422', function () use ($makeBooking) {
 
 it('more than 3 evidence_photos → 422', function () use ($makeBooking) {
     Storage::fake('public');
+    Storage::fake('private');
 
     $client = makeBookingClient();
     $worker = makeApprovedBookingWorker();
@@ -265,6 +267,7 @@ it('more than 3 evidence_photos → 422', function () use ($makeBooking) {
 
 it('evidence_photo that is not an image (PDF) → 422', function () use ($makeBooking) {
     Storage::fake('public');
+    Storage::fake('private');
 
     $client = makeBookingClient();
     $worker = makeApprovedBookingWorker();
@@ -352,7 +355,7 @@ it('reporter can view their own report → 200 with full detail', function () us
         'status' => 'under_review',
     ]);
 
-    $this->actingAs($client)
+    $response = $this->actingAs($client)
         ->getJson("/api/reports/{$report->id}")
         ->assertStatus(200)
         ->assertJsonPath('success', true)
@@ -363,8 +366,11 @@ it('reporter can view their own report → 200 with full detail', function () us
                 'status', 'admin_remarks', 'created_at',
             ]],
         ])
-        ->assertJsonPath('data.report.evidence_paths', ['reports/1/photo.jpg'])
         ->assertJsonPath('data.report.admin_remarks', null);
+
+    expect($response->json('data.report.evidence_paths.0'))
+        ->toContain('/api/media/private?')
+        ->toContain('signature=');
 });
 
 it('reported worker can view a client report → 200', function () use ($makeBooking) {

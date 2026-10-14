@@ -21,7 +21,6 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class AdminService
@@ -462,7 +461,7 @@ class AdminService
             return $storagePaths;
         });
 
-        if ($storagePaths !== [] && ! Storage::disk('public')->delete($storagePaths)) {
+        if ($storagePaths !== [] && ! app(\App\Services\Media\MediaStorageService::class)->deleteMany($storagePaths)) {
             Log::warning('Unable to remove one or more files belonging to an admin-deleted user.', [
                 'user_id' => $userIdForEvent,
                 'paths' => $storagePaths,

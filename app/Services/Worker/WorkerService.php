@@ -9,9 +9,9 @@ use App\Models\User;
 use App\Models\VerificationHistory;
 use App\Models\WorkerPortfolioPhoto;
 use App\Services\AdminNotificationService;
+use App\Services\Media\MediaStorageService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Throwable;
@@ -53,13 +53,10 @@ class WorkerService
                 $ext = $request->file($field)->getClientOriginalExtension();
                 $path = "verifications/{$user->id}/{$field}.{$ext}";
 
-                Storage::disk('public')->putFileAs(
-                    "verifications/{$user->id}",
+                $storedPaths[$field] = app(MediaStorageService::class)->storePrivateFile(
                     $request->file($field),
-                    "{$field}.{$ext}"
+                    $path,
                 );
-
-                $storedPaths[$field] = $path;
             } catch (Throwable $e) {
                 Log::error('Verification file upload failed', [
                     'user_id' => $user->id,
@@ -73,7 +70,7 @@ class WorkerService
 
         $oldPaths = $workerProfile->verificationDocuments()->pluck('file_path')->all();
         foreach ($oldPaths as $oldPath) {
-            Storage::disk('public')->delete($oldPath);
+            app(MediaStorageService::class)->delete($oldPath);
         }
 
         DB::transaction(function () use ($workerProfile, $storedPaths): void {
@@ -156,10 +153,10 @@ class WorkerService
         $storedPhotoPaths = [];
         try {
             foreach ($newPhotos as $photo) {
-                $path = $photo->store("worker-portfolios/{$user->id}", 'public');
-                if ($path === false) {
-                    throw new \RuntimeException('Unable to store a portfolio photo.');
-                }
+                $path = app(MediaStorageService::class)->storePublicFile(
+                    $photo,
+                    "worker-portfolios/{$user->id}/".\Illuminate\Support\Str::uuid().'.'.$photo->getClientOriginalExtension(),
+                );
                 $storedPhotoPaths[] = $path;
             }
 
@@ -215,12 +212,12 @@ class WorkerService
                 return $removedPhotoPaths;
             });
         } catch (Throwable $exception) {
-            Storage::disk('public')->delete($storedPhotoPaths);
+            app(MediaStorageService::class)->deleteMany($storedPhotoPaths);
             throw $exception;
         }
 
         if ($removedPhotoPaths !== []) {
-            if (! Storage::disk('public')->delete($removedPhotoPaths)) {
+            if (! app(MediaStorageService::class)->deleteMany($removedPhotoPaths)) {
                 Log::warning('Unable to remove one or more deleted worker portfolio photos.', [
                     'worker_profile_id' => $workerProfile->id,
                     'paths' => $removedPhotoPaths,
@@ -244,7 +241,7 @@ class WorkerService
             ])->values()->all(),
             'portfolio_photos' => $workerProfile->portfolioPhotos->map(fn (WorkerPortfolioPhoto $photo) => [
                 'id' => $photo->id,
-                'url' => asset('storage/'.$photo->file_path),
+                'url' => app(MediaStorageService::class)->publicUrl($photo->file_path),
                 'display_order' => $photo->display_order,
             ])->values()->all(),
         ];

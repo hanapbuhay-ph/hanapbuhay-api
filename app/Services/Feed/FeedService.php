@@ -147,7 +147,7 @@ class FeedService
                 'profile_photo_url' => $photoPath
                     ? (str_starts_with($photoPath, 'http://') || str_starts_with($photoPath, 'https://')
                         ? $photoPath
-                        : asset('storage/'.$photoPath))
+                        : app(\App\Services\Media\MediaStorageService::class)->publicUrl($photoPath))
                     : null,
                 'barangay' => $workerBarangay?->name,
                 'barangay_id' => $worker?->barangay_id,
@@ -172,8 +172,8 @@ class FeedService
             'is_available' => $post->is_available,
             'images' => $post->images->map(fn ($img) => [
                 'id' => $img->id,
-                'thumbnail_url' => $img->thumbnail_path ? asset('storage/'.$img->thumbnail_path) : null,
-                'image_url' => asset('storage/'.$img->image_path),
+                'thumbnail_url' => app(\App\Services\Media\MediaStorageService::class)->publicUrl($img->thumbnail_path),
+                'image_url' => app(\App\Services\Media\MediaStorageService::class)->publicUrl($img->image_path),
                 'display_order' => $img->display_order,
             ])->values()->all(),
             'posted_at' => $post->created_at?->toIso8601String(),

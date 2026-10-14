@@ -84,7 +84,7 @@ class AdminUserController extends Controller
 
         return str_starts_with($path, 'http://') || str_starts_with($path, 'https://')
             ? $path
-            : asset('storage/'.$path);
+            : app(\App\Services\Media\MediaStorageService::class)->publicUrl($path);
     }
 
     /**
@@ -101,7 +101,7 @@ class AdminUserController extends Controller
             'email' => $user->email,
             'role' => $user->role,
             'mobile_number' => $user->mobile_number,
-            'profile_photo_path' => $user->profile_photo_path,
+            'profile_photo_path' => self::profilePhotoUrl($user->profile_photo_path),
             'barangay_id' => $user->barangay_id,
             'barangay' => $user->barangay?->name,
             'worker_profile_id' => $user->workerProfile?->id,

@@ -47,6 +47,8 @@ class ClientController extends Controller
             ->get();
 
         $averageRating = $ratings->avg('score');
+        $profilePhotoUrl = app(\App\Services\Media\MediaStorageService::class)
+            ->publicUrl($client->profile_photo_path);
 
         return response()->json([
             'success' => true,
@@ -57,13 +59,8 @@ class ClientController extends Controller
                     'name' => $client->name,
                     'email' => $client->email,
                     'mobile_number' => $client->mobile_number,
-                    'profile_photo_path' => $client->profile_photo_path,
-                    'profile_photo_url' => $client->profile_photo_path
-                        ? (str_starts_with($client->profile_photo_path, 'http://')
-                            || str_starts_with($client->profile_photo_path, 'https://')
-                            ? $client->profile_photo_path
-                            : asset('storage/' . $client->profile_photo_path))
-                        : null,
+                    'profile_photo_path' => $profilePhotoUrl,
+                    'profile_photo_url' => $profilePhotoUrl,
                     'barangay' => $client->barangay,
                     'joined_at' => $client->created_at?->toIso8601String(),
                     'booking_count' => $bookings->count(),
@@ -78,7 +75,7 @@ class ClientController extends Controller
                             ? (str_starts_with($rating->ratedByUser->profile_photo_path, 'http://')
                                 || str_starts_with($rating->ratedByUser->profile_photo_path, 'https://')
                                 ? $rating->ratedByUser->profile_photo_path
-                                : asset('storage/' . $rating->ratedByUser->profile_photo_path))
+                                : app(\App\Services\Media\MediaStorageService::class)->publicUrl($rating->ratedByUser->profile_photo_path))
                             : null,
                         'score' => $rating->score,
                         'comment' => $rating->comment,

@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
+use App\Services\Media\MediaStorageService;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -187,10 +187,9 @@ class AuthService
                 $ext       = $request->file('profile_photo')->getClientOriginalExtension();
                 $photoPath = "photos/{$user->id}.{$ext}";
 
-                Storage::disk('public')->putFileAs(
-                    'photos',
+                $photoPath = app(MediaStorageService::class)->storePublicFile(
                     $request->file('profile_photo'),
-                    "{$user->id}.{$ext}"
+                    $photoPath,
                 );
             } catch (Throwable $e) {
                 // A failed photo upload must not block profile completion.
@@ -403,10 +402,9 @@ class AuthService
                 $ext       = $request->file('profile_photo')->getClientOriginalExtension();
                 $photoPath = "photos/{$user->id}.{$ext}";
 
-                Storage::disk('public')->putFileAs(
-                    'photos',
+                $photoPath = app(MediaStorageService::class)->storePublicFile(
                     $request->file('profile_photo'),
-                    "{$user->id}.{$ext}"
+                    $photoPath,
                 );
             } catch (Throwable $e) {
                 Log::error('Profile photo upload failed during updateProfile', [
@@ -538,7 +536,7 @@ class AuthService
                 ? (str_starts_with($user->profile_photo_path, 'http://')
                     || str_starts_with($user->profile_photo_path, 'https://')
                     ? $user->profile_photo_path       // already a full URL (e.g. Google) -- use as-is
-                    : asset('storage/' . $user->profile_photo_path))
+                    : app(MediaStorageService::class)->publicUrl($user->profile_photo_path))
                 : null,
             'barangay'          => $user->barangay?->only([
                 'id', 'name', 'latitude', 'longitude',

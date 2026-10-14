@@ -107,8 +107,8 @@ class JobPostService
             'is_active' => $post->is_active,
             'images' => $images->map(fn ($img) => [
                 'id' => $img->id,
-                'image_url' => asset('storage/'.$img->image_path),
-                'thumbnail_url' => $img->thumbnail_path ? asset('storage/'.$img->thumbnail_path) : null,
+                'image_url' => app(\App\Services\Media\MediaStorageService::class)->publicUrl($img->image_path),
+                'thumbnail_url' => app(\App\Services\Media\MediaStorageService::class)->publicUrl($img->thumbnail_path),
                 'display_order' => $img->display_order,
             ])->values()->all(),
             'created_at' => $post->created_at?->toIso8601String(),

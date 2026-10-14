@@ -241,6 +241,7 @@ it('does not notify a user who disabled message notifications', function () {
 
 it('sends a message with an image attachment', function () {
     Storage::fake('public');
+    Storage::fake('private');
 
     ['client' => $client, 'booking' => $booking] = makeBookingPair();
 
@@ -261,6 +262,7 @@ it('sends a message with an image attachment', function () {
 
 it('attachment_url is populated in response when attachment is uploaded', function () {
     Storage::fake('public');
+    Storage::fake('private');
 
     ['client' => $client, 'booking' => $booking] = makeBookingPair();
 

@@ -7,6 +7,7 @@ use App\Http\Requests\Admin\CreateAdminReportRequest;
 use App\Http\Requests\Admin\ResolveReportRequest;
 use App\Services\Admin\AdminService;
 use App\Services\Report\ReportService;
+use App\Services\Media\MediaStorageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -125,7 +126,7 @@ class AdminReportController extends Controller
                 'reason' => $report->reason,
                 'description' => $report->description,
                 'evidence_urls' => collect($report->evidence_paths ?? [])
-                    ->map(fn (string $path): string => asset('storage/'.$path))
+                    ->map(fn (string $path): ?string => app(MediaStorageService::class)->privateUrl($path))
                     ->values(),
                 'status' => $report->status,
                 'admin_notes' => $report->admin_remarks,

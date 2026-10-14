@@ -7,6 +7,7 @@ use App\Http\Requests\Message\SendMessageRequest;
 use App\Models\Booking;
 use App\Models\Message;
 use App\Services\Message\MessageService;
+use App\Services\Media\MediaStorageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -153,9 +154,7 @@ class MessageController extends Controller
                     'sender_id'      => $msg->sender_id,
                     'sender_name'    => $msg->sender->name,
                     'content'        => $msg->content ?: null,
-                    'attachment_url' => $msg->attachment_path
-                        ? asset('storage/' . $msg->attachment_path)
-                        : null,
+                    'attachment_url' => app(MediaStorageService::class)->privateUrl($msg->attachment_path),
                     'is_read'        => $msg->is_read,
                     'created_at'     => $msg->created_at->toISOString(),
                 ],
@@ -170,9 +169,7 @@ class MessageController extends Controller
             'sender_id'      => $m->sender_id,
             'sender_name'    => $m->sender->name,
             'content'        => $m->content ?: null,
-            'attachment_url' => $m->attachment_path
-                ? asset('storage/' . $m->attachment_path)
-                : null,
+            'attachment_url' => app(MediaStorageService::class)->privateUrl($m->attachment_path),
             'is_read'        => $m->is_read,
             'created_at'     => $m->created_at->toISOString(),
         ])->all();

@@ -8,6 +8,7 @@ use App\Models\Booking;
 use App\Models\Report;
 use App\Models\User;
 use App\Services\Report\ReportService;
+use App\Services\Media\MediaStorageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -65,7 +66,10 @@ class ReportController extends Controller
             'reason' => $r->reason,
             'reason_label' => $r->reportReason?->label ?? $r->reason,
             'description' => $r->description,
-            'evidence_paths' => $r->evidence_paths ?? [],
+            'evidence_paths' => collect($r->evidence_paths ?? [])
+                ->map(fn (string $path): ?string => app(MediaStorageService::class)->privateUrl($path))
+                ->values()
+                ->all(),
             'status' => $r->status,
             'admin_remarks' => $r->admin_remarks,
             'resolution_action' => $r->resolution_action,
@@ -112,7 +116,10 @@ class ReportController extends Controller
                     'reason' => $report->reason,
                     'reason_label' => $report->reportReason?->label ?? $report->reason,
                     'description' => $report->description,
-                    'evidence_paths' => $report->evidence_paths,
+                    'evidence_paths' => collect($report->evidence_paths ?? [])
+                        ->map(fn (string $path): ?string => app(MediaStorageService::class)->privateUrl($path))
+                        ->values()
+                        ->all(),
                     'status' => $report->status,
                     'admin_remarks' => $report->admin_remarks,
                     'resolution_action' => $report->resolution_action,
@@ -131,13 +138,13 @@ class ReportController extends Controller
             return null;
         }
 
+        $profilePhotoUrl = app(MediaStorageService::class)->publicUrl($user->profile_photo_path);
+
         return [
             'id' => $user->id,
             'name' => $user->name,
-            'profile_photo_url' => $user->profile_photo_path
-                ? asset('storage/'.$user->profile_photo_path)
-                : null,
-            'profile_photo_path' => $user->profile_photo_path,
+            'profile_photo_url' => $profilePhotoUrl,
+            'profile_photo_path' => $profilePhotoUrl,
         ];
     }
 }

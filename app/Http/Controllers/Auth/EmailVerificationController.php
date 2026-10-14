@@ -75,7 +75,7 @@ class EmailVerificationController extends Controller
                         'profile_photo_url' => $user->profile_photo_path
                             ? (Str::startsWith($user->profile_photo_path, ['http://', 'https://'])
                                 ? $user->profile_photo_path
-                                : asset('storage/' . $user->profile_photo_path))
+                                : app(\App\Services\Media\MediaStorageService::class)->publicUrl($user->profile_photo_path))
                             : null,
                         'barangay'          => $user->barangay?->only(['id', 'name', 'latitude', 'longitude']),
                         'email_verified_at' => $user->email_verified_at,

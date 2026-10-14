@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Services\Media\MediaStorageService;
 use App\Models\Booking;
 use App\Models\Message;
 use App\Models\User;
@@ -126,7 +127,7 @@ class AdminChatLogController extends Controller
             'sender_profile_photo_url' => self::profilePhotoUrl($message->sender?->profile_photo_path),
             'sender_role' => $message->sender_id === $clientId ? 'client' : 'worker',
             'content' => $message->content,
-            'attachment_url' => self::profilePhotoUrl($message->attachment_path),
+            'attachment_url' => app(MediaStorageService::class)->privateUrl($message->attachment_path),
             'is_read' => $message->is_read,
             'is_flagged' => false,
             'created_at' => $message->created_at?->toIso8601String(),
@@ -178,7 +179,7 @@ class AdminChatLogController extends Controller
             'sender_name' => $message->sender?->name,
             'sender_role' => $message->sender_id === $booking->client_id ? 'client' : 'worker',
             'content' => $message->content,
-            'attachment_url' => self::profilePhotoUrl($message->attachment_path),
+            'attachment_url' => app(MediaStorageService::class)->privateUrl($message->attachment_path),
             'is_read' => $message->is_read,
             'is_flagged' => false,
             'created_at' => $message->created_at?->toISOString(),
@@ -209,8 +210,6 @@ class AdminChatLogController extends Controller
             return null;
         }
 
-        return str_starts_with($path, 'http://') || str_starts_with($path, 'https://')
-            ? $path
-            : asset('storage/'.$path);
+        return app(MediaStorageService::class)->publicUrl($path);
     }
 }

@@ -13,6 +13,7 @@ uses(RefreshDatabase::class);
 
 beforeEach(function () {
     Storage::fake('public');
+    Storage::fake('private');
 });
 
 function makeWorker(): User
@@ -193,7 +194,7 @@ it('returns both government ID sides in the admin verification detail', function
     expect($documentsByType->has('government_id_front'))->toBeTrue()
         ->and($documentsByType->has('government_id_back'))->toBeTrue()
         ->and($documentsByType['government_id_front']['file_url'])
-        ->toContain('government_id_front')
+        ->toContain('/api/media/private?')
         ->and($documentsByType['government_id_back']['file_url'])
-        ->toContain('government_id_back');
+        ->toContain('signature=');
 });

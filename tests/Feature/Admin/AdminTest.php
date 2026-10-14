@@ -80,14 +80,17 @@ it('admin can retrieve a verification detail with document URLs', function () us
         'status' => 'pending',
     ]);
 
-    $this->actingAs($admin)
+    $response = $this->actingAs($admin)
         ->getJson("/api/admin/verifications/{$profile->id}")
         ->assertStatus(200)
         ->assertJsonPath('success', true)
         ->assertJsonPath('data.verification.worker_profile_id', $profile->id)
         ->assertJsonPath('data.verification.documents.0.id', $profile->verificationDocuments->first()->id)
-        ->assertJsonPath('data.verification.documents.0.type', 'government_id')
-        ->assertJsonPath('data.verification.documents.0.file_url', asset('storage/verifications/1/government_id.jpg'));
+        ->assertJsonPath('data.verification.documents.0.type', 'government_id');
+
+    expect($response->json('data.verification.documents.0.file_url'))
+        ->toContain('/api/media/private?')
+        ->toContain('signature=');
 });
 
 it('admin filters verifications by status=pending and only pending records are returned', function () use ($makeAdmin) {

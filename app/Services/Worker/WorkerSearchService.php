@@ -74,9 +74,9 @@ class WorkerSearchService
                 'is_available' => $jobPost->is_available,
                 'images' => $jobPost->images->map(fn ($img) => [
                     'id' => $img->id,
-                    'image_url' => asset('storage/'.$img->image_path),
+                    'image_url' => app(\App\Services\Media\MediaStorageService::class)->publicUrl($img->image_path),
                     'thumbnail_url' => $img->thumbnail_path
-                        ? asset('storage/'.$img->thumbnail_path)
+                        ? app(\App\Services\Media\MediaStorageService::class)->publicUrl($img->thumbnail_path)
                         : null,
                     'display_order' => $img->display_order,
                 ])->values()->all(),
@@ -232,7 +232,7 @@ class WorkerSearchService
             'profile_photo_url' => $photoPath
                 ? (str_starts_with($photoPath, 'http://') || str_starts_with($photoPath, 'https://')
                     ? $photoPath
-                    : asset('storage/'.$photoPath))
+                    : app(\App\Services\Media\MediaStorageService::class)->publicUrl($photoPath))
                 : null,
             'barangay' => $workerBarangay?->name,
             'barangay_id' => $profile->user?->barangay_id,
@@ -262,7 +262,7 @@ class WorkerSearchService
             'profile_photo_url' => $photoPath
                 ? (str_starts_with($photoPath, 'http://') || str_starts_with($photoPath, 'https://')
                     ? $photoPath
-                    : asset('storage/'.$photoPath))
+                    : app(\App\Services\Media\MediaStorageService::class)->publicUrl($photoPath))
                 : null,
             'bio' => $profile->bio,
             'barangay' => $workerBarangay?->name,
@@ -275,7 +275,7 @@ class WorkerSearchService
             ])->values()->all(),
             'portfolio_photos' => $profile->portfolioPhotos->map(fn ($photo) => [
                 'id' => $photo->id,
-                'url' => asset('storage/'.$photo->file_path),
+                'url' => app(\App\Services\Media\MediaStorageService::class)->publicUrl($photo->file_path),
                 'display_order' => $photo->display_order,
             ])->values()->all(),
             'average_rating' => (float) $profile->average_rating,
@@ -300,9 +300,9 @@ class WorkerSearchService
                 'is_active' => $p->is_active,
                 'images' => $p->images->map(fn ($image) => [
                     'id' => $image->id,
-                    'image_url' => asset('storage/'.$image->image_path),
+                    'image_url' => app(\App\Services\Media\MediaStorageService::class)->publicUrl($image->image_path),
                     'thumbnail_url' => $image->thumbnail_path
-                        ? asset('storage/'.$image->thumbnail_path)
+                        ? app(\App\Services\Media\MediaStorageService::class)->publicUrl($image->thumbnail_path)
                         : null,
                     'display_order' => $image->display_order,
                 ])->values()->all(),
@@ -316,7 +316,7 @@ class WorkerSearchService
                     ? (str_starts_with($r->ratedByUser->profile_photo_path, 'http://')
                         || str_starts_with($r->ratedByUser->profile_photo_path, 'https://')
                         ? $r->ratedByUser->profile_photo_path
-                        : asset('storage/'.$r->ratedByUser->profile_photo_path))
+                        : app(\App\Services\Media\MediaStorageService::class)->publicUrl($r->ratedByUser->profile_photo_path))
                     : null,
                 'score' => $r->score,
                 'comment' => $r->comment,
