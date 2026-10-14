@@ -35,7 +35,13 @@ class WorkerService
             throw new BusinessRuleException('You already have a pending or approved verification.');
         }
 
-        $documentFields = ['government_id', 'barangay_certificate', 'selfie_with_id', 'skill_certificate'];
+        $documentFields = [
+            'government_id_front',
+            'government_id_back',
+            'barangay_certificate',
+            'selfie_with_id',
+            'skill_certificate',
+        ];
         $storedPaths = [];
 
         foreach ($documentFields as $field) {

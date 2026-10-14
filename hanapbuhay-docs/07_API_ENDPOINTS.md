@@ -1020,8 +1020,10 @@ POST /api/worker/verification/submit
 multipart/form-data)
 
 Request Body:
-  government_id:         file, required
-                         (jpeg/png, max 5MB)
+  government_id_front:   file, required
+                         (front of government ID, jpeg/png, max 5MB)
+  government_id_back:    file, required
+                         (back of government ID, jpeg/png, max 5MB)
   barangay_certificate:  file, required
                          (jpeg/png, max 5MB)
   selfie_with_id:        file, required
@@ -1077,7 +1079,11 @@ Response 200:
             Please resubmit.",
         "documents": [
             {
-                "type": "government_id",
+                "type": "government_id_front",
+                "status": "approved"
+            },
+            {
+                "type": "government_id_back",
                 "status": "approved"
             },
             {
@@ -2216,22 +2222,31 @@ Response 200:
                 "documents": [
                     {
                         "id": 1,
-                        "type": "government_id",
+                        "type": "government_id_front",
                         "file_url": "http://...
                             storage/
                             verifications/
-                            10/gov_id.jpg",
+                            10/government_id_front.jpg",
                         "status": "pending"
                     },
                     {
                         "id": 2,
+                        "type": "government_id_back",
+                        "file_url": "http://...
+                            storage/
+                            verifications/
+                            10/government_id_back.jpg",
+                        "status": "pending"
+                    },
+                    {
+                        "id": 3,
                         "type":
                             "barangay_certificate",
                         "file_url": "...",
                         "status": "pending"
                     },
                     {
-                        "id": 3,
+                        "id": 4,
                         "type": "selfie_with_id",
                         "file_url": "...",
                         "status": "pending"

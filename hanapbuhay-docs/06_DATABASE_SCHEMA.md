@@ -776,6 +776,8 @@ Schema::create('verification_documents', function (Blueprint $table) {
           ->cascadeOnDelete();
     $table->enum('document_type', [
         'government_id',
+        'government_id_front',
+        'government_id_back',
         'barangay_certificate',
         'selfie_with_id',
         'skill_certificate'
