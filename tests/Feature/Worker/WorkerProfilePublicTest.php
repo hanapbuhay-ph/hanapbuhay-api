@@ -3,6 +3,7 @@
 use App\Models\Barangay;
 use App\Models\Booking;
 use App\Models\JobPost;
+use App\Models\JobPostImage;
 use App\Models\RatingReview;
 use App\Models\ServiceCategory;
 use App\Models\User;
@@ -66,6 +67,7 @@ it('returns 200 with correct shape for an approved worker', function () {
                 'trust_tier',
                 'verification_status',
                 'availability_status',
+                'is_online',
                 'job_posts',
                 'reviews',
             ],
@@ -73,6 +75,100 @@ it('returns 200 with correct shape for an approved worker', function () {
 
     expect($response->json('data.worker_profile_id'))->toBe($profile->id);
     expect($response->json('data.portfolio_photos'))->toBe([]);
+});
+
+it('returns the authenticated worker profile even when the user id matches another profile id', function () {
+    makeAuthClient();
+    makeAuthClient();
+    $worker = makeApprovedWorkerProfile();
+    $worker->update([
+        'average_rating' => 4.75,
+        'total_reviews' => 9,
+        'completed_jobs' => 8,
+        'trust_tier' => 'verified',
+    ]);
+
+    while (! WorkerProfile::whereKey($worker->user_id)->exists()) {
+        makeApprovedWorkerProfile();
+    }
+    $otherProfile = WorkerProfile::findOrFail($worker->user_id);
+    $otherProfile->update([
+        'average_rating' => 1.25,
+        'total_reviews' => 2,
+        'completed_jobs' => 1,
+        'trust_tier' => null,
+    ]);
+
+    $reviewer = User::factory()->create(['name' => 'Own reviewer', 'email_verified_at' => now()]);
+    $otherReviewer = User::factory()->create(['name' => 'Other reviewer', 'email_verified_at' => now()]);
+    $ownBooking = Booking::factory()->create([
+        'client_id' => $reviewer->id,
+        'worker_id' => $worker->user_id,
+        'status' => 'completed',
+    ]);
+    $otherBooking = Booking::factory()->create([
+        'client_id' => $otherReviewer->id,
+        'worker_id' => $otherProfile->user_id,
+        'status' => 'completed',
+    ]);
+    Booking::factory()->count(2)->create([
+        'client_id' => $reviewer->id,
+        'worker_id' => $worker->user_id,
+        'status' => 'completed',
+    ]);
+    RatingReview::factory()->create([
+        'booking_id' => $ownBooking->id,
+        'rated_by' => $reviewer->id,
+        'rated_user' => $worker->user_id,
+        'score' => 5,
+        'comment' => 'This belongs to the signed-in worker.',
+    ]);
+    RatingReview::factory()->create([
+        'booking_id' => $otherBooking->id,
+        'rated_by' => $otherReviewer->id,
+        'rated_user' => $otherProfile->user_id,
+        'score' => 1,
+        'comment' => 'This belongs to a different worker.',
+    ]);
+
+    expect($worker->user_id)->toBe($otherProfile->id)
+        ->and($worker->id)->not->toBe($otherProfile->id);
+
+    $response = $this->actingAs($worker->user)->get('/api/worker/profile')
+        ->assertOk()
+        ->assertJsonPath('data.worker.worker_profile_id', $worker->id)
+        ->assertJsonPath('data.worker.user_id', $worker->user_id)
+        ->assertJsonPath('data.worker.average_rating', 4.75)
+        ->assertJsonPath('data.worker.completed_jobs', 3)
+        ->assertJsonPath('data.worker.trust_tier', 'verified');
+
+    expect($response->json('data.worker.reviews'))->toHaveCount(1)
+        ->and($response->json('data.worker.reviews.0.comment'))
+        ->toBe('This belongs to the signed-in worker.');
+});
+
+it('reports worker online presence from a recent heartbeat', function () {
+    $client = makeAuthClient();
+    $profile = makeApprovedWorkerProfile();
+    $profile->user->forceFill(['last_seen_at' => now()->subMinutes(4)])->save();
+
+    $this->actingAs($client)->get("/api/workers/{$profile->id}")
+        ->assertOk()
+        ->assertJsonPath('data.is_online', true);
+});
+
+it('reports workers offline when their heartbeat is absent or stale', function () {
+    $client = makeAuthClient();
+    $profile = makeApprovedWorkerProfile();
+
+    $this->actingAs($client)->get("/api/workers/{$profile->id}")
+        ->assertOk()
+        ->assertJsonPath('data.is_online', false);
+
+    $profile->user->forceFill(['last_seen_at' => now()->subMinutes(6)])->save();
+    $this->actingAs($client)->get("/api/workers/{$profile->id}")
+        ->assertOk()
+        ->assertJsonPath('data.is_online', false);
 });
 
 it('includes saved portfolio photos in the public worker profile', function () {
@@ -109,14 +205,55 @@ it('returns 200 when a client views an unverified worker (spec: verification is 
         ->assertJson(['success' => true]);
 });
 
-it('returns 404 when a client views a flagged or revoked worker', function () {
+it('prefers a worker profile ID over another worker user ID when they collide', function () {
     $client = makeAuthClient();
-    $barangay = Barangay::factory()->create();
-    $user = User::factory()->create(['role' => 'worker', 'email_verified_at' => now(), 'barangay_id' => $barangay->id]);
-    $profile = WorkerProfile::factory()->create(['user_id' => $user->id, 'verification_status' => 'approved', 'trust_tier' => 'flagged']);
+    $workers = collect(range(1, 20))->map(function () {
+        $user = User::factory()->create([
+            'role' => 'worker',
+            'email_verified_at' => now(),
+        ]);
+        $profile = WorkerProfile::factory()->create([
+            'user_id' => $user->id,
+            'verification_status' => 'approved',
+        ]);
 
-    $this->actingAs($client)->get("/api/workers/{$profile->id}")
-        ->assertStatus(404);
+        return compact('user', 'profile');
+    });
+
+    $collision = $workers->first(function ($target) use ($workers) {
+        return $workers->contains(
+            fn ($owner) => (int) $owner['user']->id === (int) $target['profile']->id
+                && (int) $owner['profile']->id !== (int) $target['profile']->id,
+        );
+    });
+    expect($collision)->not->toBeNull();
+
+    $targetProfile = $collision['profile'];
+    $this->actingAs($client)->get("/api/workers/{$targetProfile->id}")
+        ->assertOk()
+        ->assertJsonPath('data.worker_profile_id', $targetProfile->id);
+});
+
+it('allows a client to load a flagged or revoked worker profile to continue from a feed post', function () {
+    $client = makeAuthClient();
+    foreach (['flagged', 'revoked'] as $trustTier) {
+        $barangay = Barangay::factory()->create();
+        $user = User::factory()->create([
+            'role' => 'worker',
+            'email_verified_at' => now(),
+            'barangay_id' => $barangay->id,
+        ]);
+        $profile = WorkerProfile::factory()->create([
+            'user_id' => $user->id,
+            'verification_status' => 'approved',
+            'trust_tier' => $trustTier,
+        ]);
+
+        $this->actingAs($client)->get("/api/workers/{$profile->id}")
+            ->assertOk()
+            ->assertJsonPath('data.worker_profile_id', $profile->id)
+            ->assertJsonPath('data.trust_tier', $trustTier);
+    }
 });
 
 it('returns 200 when an admin views an unapproved worker', function () {
@@ -160,6 +297,7 @@ it('response includes reviews array with correct fields', function () {
     $response->assertStatus(200);
     $reviews = $response->json('data.reviews');
     expect($reviews)->toHaveCount(1);
+    expect($reviews[0]['booking_id'])->toBe($booking->id);
     expect($reviews[0]['rated_by_name'])->toBe('Ana Cruz');
     expect($reviews[0]['score'])->toBe(5);
     expect($reviews[0]['comment'])->toBe('Very professional!');
@@ -208,6 +346,18 @@ it('response includes job_posts with documented D3 shape', function () {
         'is_available' => true,
         'is_active' => true,
     ]);
+    $image = JobPostImage::factory()->create([
+        'job_post_id' => $post->id,
+        'image_path' => "job_posts/{$post->id}/work.jpg",
+        'thumbnail_path' => "job_posts/{$post->id}/work_thumb.jpg",
+        'display_order' => 0,
+    ]);
+    JobPost::factory()->create([
+        'worker_profile_id' => $profile->id,
+        'service_category_id' => $category->id,
+        'is_available' => false,
+        'is_active' => true,
+    ]);
 
     $response = $this->actingAs($client)->get("/api/workers/{$profile->id}");
 
@@ -222,5 +372,8 @@ it('response includes job_posts with documented D3 shape', function () {
     expect((float) $posts[0]['rate_amount'])->toBe(300.00);
     expect($posts[0]['rate_type'])->toBe('daily');
     expect($posts[0]['rate_display'])->toBe('₱300.00/day');
+    expect($posts[0]['is_active'])->toBeTrue();
+    expect($posts[0]['images'][0]['id'])->toBe($image->id);
+    expect($posts[0]['images'][0]['image_url'])->toBe(asset('storage/'.$image->image_path));
     expect($posts[0]['is_available'])->toBe(true);
 });

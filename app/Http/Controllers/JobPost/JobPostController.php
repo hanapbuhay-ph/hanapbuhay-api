@@ -90,6 +90,7 @@ class JobPostController extends Controller
 
         $clientBarangay = $request->user()?->barangay ?? $request->user()?->load('barangay')?->barangay;
         $workerBarangay = $worker?->barangay;
+        $photoPath = $worker?->profile_photo_path;
         $distanceKm = ($clientBarangay && $workerBarangay)
             ? DistanceHelper::haversine(
                 (float) $clientBarangay->latitude,
@@ -110,8 +111,10 @@ class JobPostController extends Controller
                     'worker' => [
                         'user_id' => $worker?->id,
                         'name' => $worker?->name,
-                        'profile_photo_url' => $worker?->profile_photo_path
-                            ? asset('storage/'.$worker->profile_photo_path)
+                        'profile_photo_url' => $photoPath
+                            ? (str_starts_with($photoPath, 'http://') || str_starts_with($photoPath, 'https://')
+                                ? $photoPath
+                                : asset('storage/'.$photoPath))
                             : null,
                         'barangay' => $workerBarangay?->name,
                         'distance_km' => $distanceKm,

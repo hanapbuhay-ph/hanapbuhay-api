@@ -189,6 +189,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::middleware(['auth:sanctum', 'active', 'worker'])->prefix('worker')->group(function () {
+    Route::get('profile', [WorkerProfileController::class, 'show']);
     Route::post('verification/submit', [VerificationController::class, 'submit']);
     Route::get('verification/status', [VerificationController::class, 'status']);
     Route::post('profile', [WorkerProfileController::class, 'update']);

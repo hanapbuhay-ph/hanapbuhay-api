@@ -825,7 +825,8 @@ Response 200:
                     "average_rating": 4.80,
                     "total_reviews": 23,
                     "trust_tier": "verified",
-                    "verification_status": "approved"
+                    "verification_status": "approved",
+                    "availability_status": "available"
                 },
                 "category": {
                     "id": 1,
@@ -952,6 +953,7 @@ Response 200:
         "trust_tier": "verified",
         "verification_status": "approved",
         "availability_status": "available",
+        "is_online": true,
         "average_rating": 4.80,
         "total_reviews": 23,
         "completed_jobs": 45,
@@ -968,7 +970,16 @@ Response 200:
                 "rate_amount": 300.00,
                 "rate_type": "daily",
                 "rate_display": "₱300.00/day",
-                "is_available": true
+                "is_available": true,
+                "is_active": true,
+                "images": [
+                    {
+                        "id": 21,
+                        "image_url": "...",
+                        "thumbnail_url": "...",
+                        "display_order": 0
+                    }
+                ]
             }
         ],
         "reviews": [
@@ -982,6 +993,8 @@ Response 200:
     }
 }
 ```
+`is_online` is true when the worker sent a presence heartbeat within the last
+five minutes; it is independent of the worker's availability and trust tier.
 
 ---
 
@@ -1018,6 +1031,17 @@ Response 422 (already pending/approved):
     "message": "You already have a pending
                 or approved verification."
 }
+```
+
+### D3a. Get Authenticated Worker's Own Profile
+```
+GET /api/worker/profile
+(Protected, Worker only)
+
+Response 200 uses the same worker detail fields as D3, wrapped in
+`data.worker`. The profile is resolved through the authenticated user's
+worker-profile relationship, avoiding ambiguity between user IDs and
+worker-profile IDs.
 ```
 
 ---
@@ -2284,8 +2308,9 @@ Response 200:
 
 Side Effects:
   Updates trust_tier in worker_profiles
-  If revoked: job posts hidden from feed,
-              user cannot log in
+  Job posts remain visible in client feeds regardless of trust tier;
+  the client app warns before booking workers not marked verified/trusted.
+  If revoked: user cannot log in
   Push notification to worker
   Logged in admin_audit_logs
 ```

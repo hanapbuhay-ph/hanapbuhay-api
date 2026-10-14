@@ -31,7 +31,10 @@ class WorkerSearchService
                 'serviceCategories',
                 'jobPosts' => fn ($q) => $q->where('service_category_id', $categoryId)->where('is_active', true),
                 'jobPosts.images',
-                'jobPosts.serviceCategory',
+                'jobPosts' => fn ($query) => $query
+                    ->where('is_active', true)
+                    ->where('is_available', true)
+                    ->with(['serviceCategory', 'images']),
             ])
             ->whereHas('serviceCategories', fn ($q) => $q->where('service_categories.id', $categoryId));
 
@@ -133,27 +136,32 @@ class WorkerSearchService
 
     public function getWorker(User $authUser, int|string $workerProfileId): array
     {
-        $profile = WorkerProfile::with([
+        $profileQuery = WorkerProfile::with([
             'user.barangay',
             'serviceCategories',
             'portfolioPhotos',
             'verificationDocuments',
-            'jobPosts.serviceCategory',
+            'jobPosts' => fn ($query) => $query
+                ->where('is_active', true)
+                ->where('is_available', true)
+                ->with(['serviceCategory', 'images']),
             'ratings' => fn ($q) => $q->with('ratedByUser')->latest(),
-        ])
-            ->where('id', $workerProfileId)
-            ->orWhere('user_id', $workerProfileId)
-            ->first();
+        ]);
+
+        $profile = $profileQuery->whereKey($workerProfileId)->first()
+            ?? WorkerProfile::with([
+                'user.barangay',
+                'serviceCategories',
+                'portfolioPhotos',
+                'verificationDocuments',
+                'jobPosts' => fn ($query) => $query
+                    ->where('is_active', true)
+                    ->where('is_available', true)
+                    ->with(['serviceCategory', 'images']),
+                'ratings' => fn ($q) => $q->with('ratedByUser')->latest(),
+            ])->where('user_id', $workerProfileId)->first();
 
         if ($profile === null) {
-            throw new BusinessRuleException('Worker not found.', 404);
-        }
-
-        if (
-            ! $authUser->isAdmin()
-            && $profile->user_id !== $authUser->id
-            && in_array($profile->trust_tier, ['flagged', 'revoked'], true)
-        ) {
             throw new BusinessRuleException('Worker not found.', 404);
         }
 
@@ -162,6 +170,16 @@ class WorkerSearchService
             : $authUser->load('barangay')->barangay;
 
         return $this->formatWorkerDetail($profile, $authBarangay);
+    }
+
+    public function getAuthenticatedWorker(User $authUser): array
+    {
+        $workerProfileId = $authUser->workerProfile()->value('id');
+        if ($workerProfileId === null) {
+            throw new BusinessRuleException('Worker profile not found.', 404);
+        }
+
+        return $this->getWorker($authUser, $workerProfileId);
     }
 
     private function resolveDistance(?object $authBarangay, ?object $workerBarangay): array
@@ -203,6 +221,7 @@ class WorkerSearchService
     private function formatWorkerSummary(WorkerProfile $profile, ?object $authBarangay): array
     {
         $workerBarangay = $profile->user?->barangay;
+        $photoPath = $profile->user?->profile_photo_path;
         $distance = $this->resolveDistance($authBarangay, $workerBarangay);
         $completedJobs = $this->getCompletedJobsCount($profile);
 
@@ -210,8 +229,10 @@ class WorkerSearchService
             'worker_profile_id' => $profile->id,
             'user_id' => $profile->user_id,
             'name' => $profile->user?->name,
-            'profile_photo_url' => $profile->user?->profile_photo_path
-                ? asset('storage/'.$profile->user->profile_photo_path)
+            'profile_photo_url' => $photoPath
+                ? (str_starts_with($photoPath, 'http://') || str_starts_with($photoPath, 'https://')
+                    ? $photoPath
+                    : asset('storage/'.$photoPath))
                 : null,
             'barangay' => $workerBarangay?->name,
             'barangay_id' => $profile->user?->barangay_id,
@@ -230,6 +251,7 @@ class WorkerSearchService
     private function formatWorkerDetail(WorkerProfile $profile, ?object $authBarangay): array
     {
         $workerBarangay = $profile->user?->barangay;
+        $photoPath = $profile->user?->profile_photo_path;
         $distance = $this->resolveDistance($authBarangay, $workerBarangay);
         $completedJobs = $this->getCompletedJobsCount($profile);
 
@@ -237,8 +259,10 @@ class WorkerSearchService
             'worker_profile_id' => $profile->id,
             'user_id' => $profile->user_id,
             'name' => $profile->user?->name,
-            'profile_photo_url' => $profile->user?->profile_photo_path
-                ? asset('storage/'.$profile->user->profile_photo_path)
+            'profile_photo_url' => $photoPath
+                ? (str_starts_with($photoPath, 'http://') || str_starts_with($photoPath, 'https://')
+                    ? $photoPath
+                    : asset('storage/'.$photoPath))
                 : null,
             'bio' => $profile->bio,
             'barangay' => $workerBarangay?->name,
@@ -260,6 +284,7 @@ class WorkerSearchService
             'trust_tier' => $profile->trust_tier,
             'verification_status' => $profile->verification_status,
             'availability_status' => $profile->availability_status,
+            'is_online' => $profile->user?->last_seen_at?->gte(now()->subMinutes(5)) ?? false,
             'job_posts' => $profile->jobPosts->map(fn ($p) => [
                 'id' => $p->id,
                 'category' => [
@@ -272,6 +297,15 @@ class WorkerSearchService
                 'rate_type' => $p->rate_type,
                 'rate_display' => $p->rate_display,
                 'is_available' => $p->is_available,
+                'is_active' => $p->is_active,
+                'images' => $p->images->map(fn ($image) => [
+                    'id' => $image->id,
+                    'image_url' => asset('storage/'.$image->image_path),
+                    'thumbnail_url' => $image->thumbnail_path
+                        ? asset('storage/'.$image->thumbnail_path)
+                        : null,
+                    'display_order' => $image->display_order,
+                ])->values()->all(),
             ])->values()->all(),
             'reviews' => $profile->ratings->map(fn ($r) => [
                 'id' => $r->id,

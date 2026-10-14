@@ -42,16 +42,6 @@ class FeedService
                 'serviceCategory',
                 'images',
             ])
-            // Exclude posts from workers whose account has been flagged or revoked.
-            // Unverified workers ARE allowed in the feed — spec §D1 states verification
-            // is a client-side concern (the app shows a warning modal); the backend
-            // should not block unverified workers from the feed entirely.
-            ->whereHas('workerProfile', function ($q) {
-                $q->where(function ($inner) {
-                    $inner->whereNull('trust_tier')
-                        ->orWhereNotIn('trust_tier', ['flagged', 'revoked']);
-                });
-            })
             // Also require worker account to be active
             ->whereHas('workerProfile.user', fn ($q) => $q->where('is_active', true));
 
@@ -141,6 +131,7 @@ class FeedService
         $profile = $post->workerProfile;
         $worker = $profile?->user;
         $workerBarangay = $worker?->barangay;
+        $photoPath = $worker?->profile_photo_path;
 
         $distanceLabel = $distanceKm !== null ? "~{$distanceKm} km" : 'Distance unavailable';
 
@@ -150,8 +141,10 @@ class FeedService
             'worker' => [
                 'user_id' => $worker?->id,
                 'name' => $worker?->name,
-                'profile_photo_url' => $worker?->profile_photo_path
-                    ? asset('storage/'.$worker->profile_photo_path)
+                'profile_photo_url' => $photoPath
+                    ? (str_starts_with($photoPath, 'http://') || str_starts_with($photoPath, 'https://')
+                        ? $photoPath
+                        : asset('storage/'.$photoPath))
                     : null,
                 'barangay' => $workerBarangay?->name,
                 'barangay_id' => $worker?->barangay_id,
@@ -161,6 +154,7 @@ class FeedService
                 'total_reviews' => $profile?->total_reviews ?? 0,
                 'trust_tier' => $profile?->trust_tier,
                 'verification_status' => $profile?->verification_status,
+                'availability_status' => $profile?->availability_status,
             ],
             'category' => [
                 'id' => $post->serviceCategory?->id,

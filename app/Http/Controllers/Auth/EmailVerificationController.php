@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Throwable;
 
 class EmailVerificationController extends Controller
@@ -58,7 +59,9 @@ class EmailVerificationController extends Controller
                         'role'              => $user->role,
                         'mobile_number'     => $user->mobile_number,
                         'profile_photo_url' => $user->profile_photo_path
-                            ? asset('storage/' . $user->profile_photo_path)
+                            ? (Str::startsWith($user->profile_photo_path, ['http://', 'https://'])
+                                ? $user->profile_photo_path
+                                : asset('storage/' . $user->profile_photo_path))
                             : null,
                         'barangay'          => $user->barangay?->only(['id', 'name', 'latitude', 'longitude']),
                         'email_verified_at' => $user->email_verified_at,
