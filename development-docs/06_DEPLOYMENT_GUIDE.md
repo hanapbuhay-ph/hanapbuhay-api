@@ -176,6 +176,8 @@ used because the current MySQL TLS config uses the `Pdo\Mysql` constants. In Ren
 4. Add the Aiven CA certificate as a Render secret file and set
    `MYSQL_ATTR_SSL_CA` to its in-container path (for example,
    `/etc/secrets/ca.pem`).
+   The Docker image adds `www-data` to group `1000`, which Render uses to grant
+   the application access to mounted secret files.
 5. Complete the database migration and seed plan before directing clients at
    the API. Do not assume the deploy automatically migrates the database.
 

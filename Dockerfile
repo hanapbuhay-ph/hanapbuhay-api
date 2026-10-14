@@ -26,6 +26,9 @@ RUN apt-get update \
         zip \
     && rm -rf /var/lib/apt/lists/*
 
+RUN groupadd --gid 1000 render-secrets \
+    && usermod -aG render-secrets www-data
+
 COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
 
 WORKDIR /var/www/html
