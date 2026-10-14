@@ -277,7 +277,11 @@ it('response includes reviews array with correct fields', function () {
     $client = makeAuthClient();
     $profile = makeApprovedWorkerProfile();
 
-    $rater = User::factory()->create(['name' => 'Ana Cruz', 'email_verified_at' => now()]);
+    $rater = User::factory()->create([
+        'name' => 'Ana Cruz',
+        'email_verified_at' => now(),
+        'profile_photo_path' => 'https://lh3.googleusercontent.com/ana-photo',
+    ]);
     $booking = Booking::factory()->create([
         'client_id' => $rater->id,
         'worker_id' => $profile->user_id,
@@ -298,7 +302,9 @@ it('response includes reviews array with correct fields', function () {
     $reviews = $response->json('data.reviews');
     expect($reviews)->toHaveCount(1);
     expect($reviews[0]['booking_id'])->toBe($booking->id);
+    expect($reviews[0]['rated_by_user_id'])->toBe($rater->id);
     expect($reviews[0]['rated_by_name'])->toBe('Ana Cruz');
+    expect($reviews[0]['reviewer_avatar_url'])->toBe('https://lh3.googleusercontent.com/ana-photo');
     expect($reviews[0]['score'])->toBe(5);
     expect($reviews[0]['comment'])->toBe('Very professional!');
     expect($reviews[0])->toHaveKey('created_at');

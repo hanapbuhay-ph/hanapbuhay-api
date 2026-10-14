@@ -984,7 +984,9 @@ Response 200:
         ],
         "reviews": [
             {
+                "rated_by_user_id": 12,
                 "rated_by_name": "Ana Cruz",
+                "reviewer_avatar_url": "https://example.com/ana.jpg",
                 "score": 5,
                 "comment": "Very professional!",
                 "created_at": "2026-08-01T..."
@@ -995,6 +997,19 @@ Response 200:
 ```
 `is_online` is true when the worker sent a presence heartbeat within the last
 five minutes; it is independent of the worker's availability and trust tier.
+
+---
+
+### D3a. Get Client Profile (Worker)
+```
+GET /api/clients/{clientId}
+(Protected, Worker only; client must have a booking with the signed-in worker)
+```
+
+The `data.client` response includes `average_rating`, `rating_count`, and
+`ratings[]` for ratings the client received from workers. Each rating contains
+the reviewer's worker-profile ID, name, photo URL, score, comment, and date.
+`average_rating` is `null` when the client has not received any worker ratings.
 
 ---
 

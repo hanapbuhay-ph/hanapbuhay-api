@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Client;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking;
+use App\Models\RatingReview;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -38,6 +39,15 @@ class ClientController extends Controller
             ->latest('scheduled_at')
             ->get(['id', 'booking_code', 'service_category_id', 'scheduled_at', 'status', 'notes', 'created_at']);
 
+        $ratings = RatingReview::query()
+            ->where('rated_user', $client->id)
+            ->whereHas('ratedByUser', fn ($query) => $query->where('role', 'worker'))
+            ->with('ratedByUser.workerProfile')
+            ->latest()
+            ->get();
+
+        $averageRating = $ratings->avg('score');
+
         return response()->json([
             'success' => true,
             'message' => 'Client profile retrieved.',
@@ -49,12 +59,31 @@ class ClientController extends Controller
                     'mobile_number' => $client->mobile_number,
                     'profile_photo_path' => $client->profile_photo_path,
                     'profile_photo_url' => $client->profile_photo_path
-                        ? asset('storage/' . $client->profile_photo_path)
+                        ? (str_starts_with($client->profile_photo_path, 'http://')
+                            || str_starts_with($client->profile_photo_path, 'https://')
+                            ? $client->profile_photo_path
+                            : asset('storage/' . $client->profile_photo_path))
                         : null,
                     'barangay' => $client->barangay,
                     'joined_at' => $client->created_at?->toIso8601String(),
                     'booking_count' => $bookings->count(),
                     'completed_booking_count' => $bookings->where('status', 'completed')->count(),
+                    'average_rating' => $averageRating === null ? null : round($averageRating, 2),
+                    'rating_count' => $ratings->count(),
+                    'ratings' => $ratings->map(fn (RatingReview $rating) => [
+                        'id' => $rating->id,
+                        'rated_by_worker_profile_id' => $rating->ratedByUser?->workerProfile?->id,
+                        'rated_by_name' => $rating->ratedByUser?->name,
+                        'reviewer_avatar_url' => $rating->ratedByUser?->profile_photo_path
+                            ? (str_starts_with($rating->ratedByUser->profile_photo_path, 'http://')
+                                || str_starts_with($rating->ratedByUser->profile_photo_path, 'https://')
+                                ? $rating->ratedByUser->profile_photo_path
+                                : asset('storage/' . $rating->ratedByUser->profile_photo_path))
+                            : null,
+                        'score' => $rating->score,
+                        'comment' => $rating->comment,
+                        'created_at' => $rating->created_at?->toIso8601String(),
+                    ])->values(),
                     'bookings' => $bookings->map(fn (Booking $booking) => [
                         'id' => $booking->id,
                         'booking_code' => $booking->booking_code,

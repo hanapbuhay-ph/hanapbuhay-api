@@ -310,9 +310,13 @@ class WorkerSearchService
             'reviews' => $profile->ratings->map(fn ($r) => [
                 'id' => $r->id,
                 'booking_id' => $r->booking_id,
+                'rated_by_user_id' => $r->rated_by,
                 'rated_by_name' => $r->ratedByUser?->name,
                 'reviewer_avatar_url' => $r->ratedByUser?->profile_photo_path
-                    ? asset('storage/'.$r->ratedByUser->profile_photo_path)
+                    ? (str_starts_with($r->ratedByUser->profile_photo_path, 'http://')
+                        || str_starts_with($r->ratedByUser->profile_photo_path, 'https://')
+                        ? $r->ratedByUser->profile_photo_path
+                        : asset('storage/'.$r->ratedByUser->profile_photo_path))
                     : null,
                 'score' => $r->score,
                 'comment' => $r->comment,

@@ -106,6 +106,23 @@ it('returns a single booking for an authorized user', function () {
         ->assertJsonPath('data.booking.id', $booking->id);
 });
 
+it('includes the clients actual profile photo path in a workers jobs list', function () {
+    $client = User::factory()->create([
+        'role' => 'client',
+        'profile_photo_path' => 'client-photos/client-avatar.jpg',
+    ]);
+    $worker = makeWorkerForListing();
+    createBookingFor($client, $worker);
+
+    $this->actingAs($worker)
+        ->getJson('/api/bookings')
+        ->assertOk()
+        ->assertJsonPath(
+            'data.bookings.0.client.profile_photo_path',
+            'client-photos/client-avatar.jpg',
+        );
+});
+
 it('returns 403 when a different user tries to view a booking', function () {
     $client   = User::factory()->create(['role' => 'client']);
     $worker   = makeWorkerForListing();
