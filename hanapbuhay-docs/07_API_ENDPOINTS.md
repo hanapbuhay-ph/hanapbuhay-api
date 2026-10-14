@@ -1765,7 +1765,14 @@ Request Body:
 Response 200:
 {
     "success": true,
-    "message": "Location updated."
+    "message": "Location updated.",
+    "data": {
+        "booking_id": 1,
+        "role": "worker",
+        "latitude": 9.9530000,
+        "longitude": 124.3660000,
+        "accuracy": 5.2
+    }
 }
 
 Note: Primary method is WebSocket broadcast.
@@ -1822,8 +1829,8 @@ Response 200:
     "data": {
         "is_client_tracking": false,
         "is_worker_tracking": true,
-        "client_current_location": null,
-        "worker_current_location": {
+        "last_client_location": null,
+        "last_worker_location": {
             "latitude": 9.9530000,
             "longitude": 124.3660000,
             "accuracy": 5.2,
@@ -1843,6 +1850,10 @@ Response 200:
     }
 }
 ```
+The `last_*_location` fields contain the most recent GPS fix only while that
+party is actively sharing. They are `null` when the party is not tracking or
+has not sent a GPS fix yet. Barangay coordinates remain available as a
+non-live fallback.
 
 ---
 

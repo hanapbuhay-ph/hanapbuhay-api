@@ -98,8 +98,9 @@ class TrackingController extends Controller
             ], 422);
         }
 
-        $latitude    = (float) $request->input('latitude');
-        $longitude   = (float) $request->input('longitude');
+        $validated   = $request->validated();
+        $latitude    = (float) $validated['latitude'];
+        $longitude   = (float) $validated['longitude'];
         $recordedAt  = now();
 
         LocationUpdated::dispatch($booking->id, $role, $latitude, $longitude, $recordedAt->toISOString());
@@ -109,6 +110,7 @@ class TrackingController extends Controller
             'tracked_role' => $role,
             'latitude'    => $latitude,
             'longitude'   => $longitude,
+            'accuracy'    => $validated['accuracy'] ?? null,
             'recorded_at' => $recordedAt,
         ]);
 
@@ -120,6 +122,7 @@ class TrackingController extends Controller
                 'role'       => $role,
                 'latitude'   => $latitude,
                 'longitude'  => $longitude,
+                'accuracy'   => $validated['accuracy'] ?? null,
             ],
         ]);
     }
@@ -191,6 +194,7 @@ class TrackingController extends Controller
 
         $clientBarangay = $booking->client?->barangay;
         $workerBarangay = $booking->worker?->barangay;
+        $latestLocation = fn (string $role): ?array => $this->latestLocation($booking->id, $role);
 
         return response()->json([
             'success' => true,
@@ -208,7 +212,29 @@ class TrackingController extends Controller
                     'latitude'  => (float) $workerBarangay->latitude,
                     'longitude' => (float) $workerBarangay->longitude,
                 ] : null,
+                'last_client_location' => $booking->is_client_tracking ? $latestLocation('client') : null,
+                'last_worker_location' => $booking->is_worker_tracking ? $latestLocation('worker') : null,
             ],
         ]);
+    }
+
+    private function latestLocation(int $bookingId, string $role): ?array
+    {
+        $location = BookingTracking::query()
+            ->where('booking_id', $bookingId)
+            ->where('tracked_role', $role)
+            ->latest('recorded_at')
+            ->first(['latitude', 'longitude', 'accuracy', 'recorded_at']);
+
+        if ($location === null) {
+            return null;
+        }
+
+        return [
+            'latitude' => (float) $location->latitude,
+            'longitude' => (float) $location->longitude,
+            'accuracy' => $location->accuracy === null ? null : (float) $location->accuracy,
+            'recorded_at' => $location->recorded_at->toISOString(),
+        ];
     }
 }

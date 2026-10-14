@@ -109,6 +109,7 @@ it('worker sends a location update', function () use ($makeActiveBooking) {
         ->postJson("/api/bookings/{$booking->id}/tracking/update", [
             'latitude'  => 10.1234567,
             'longitude' => 124.1234567,
+            'accuracy'  => 8.5,
         ])
         ->assertStatus(200)
         ->assertJsonPath('data.role', 'worker')
@@ -116,6 +117,8 @@ it('worker sends a location update', function () use ($makeActiveBooking) {
         ->assertJsonPath('data.longitude', 124.1234567);
 
     expect(BookingTracking::where('booking_id', $booking->id)->count())->toBe(1);
+    expect((float) BookingTracking::where('booking_id', $booking->id)->value('accuracy'))
+        ->toBe(8.5);
 
     Event::assertDispatched(LocationUpdated::class, function ($e) use ($booking) {
         return $e->bookingId === $booking->id
@@ -257,13 +260,25 @@ it('returns tracking state and both barangay coordinates', function () {
         'status'              => 'active',
         'is_worker_tracking'  => true,
     ]);
+    BookingTracking::create([
+        'booking_id'  => $booking->id,
+        'tracked_role' => 'worker',
+        'latitude'    => 10.1234567,
+        'longitude'   => 124.1234567,
+        'accuracy'    => 6.25,
+        'recorded_at' => now(),
+    ]);
 
     $this->actingAs($client)
         ->getJson("/api/bookings/{$booking->id}/tracking")
         ->assertStatus(200)
         ->assertJsonPath('data.is_worker_tracking', true)
         ->assertJsonPath('data.client_barangay.name', 'Calanggaman')
-        ->assertJsonPath('data.worker_barangay.name', 'Trinidad');
+        ->assertJsonPath('data.worker_barangay.name', 'Trinidad')
+        ->assertJsonPath('data.last_worker_location.latitude', 10.1234567)
+        ->assertJsonPath('data.last_worker_location.longitude', 124.1234567)
+        ->assertJsonPath('data.last_worker_location.accuracy', 6.25)
+        ->assertJsonPath('data.last_client_location', null);
 });
 
 it('returns 403 when unrelated user tries to view tracking state', function () {
