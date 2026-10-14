@@ -179,7 +179,7 @@ Validation Rules:
   email:                 required, email,
                          unique:users
   password:              required, min:8, confirmed
-  mobile_number:         required, string, max:20
+  mobile_number:         required, valid Philippine mobile (09 + 9 digits)
   role:                  required, in:client,worker
   barangay_id:           required,
                          exists:barangays,id
@@ -431,7 +431,9 @@ POST /api/auth/google/complete-profile
 
 Request Body (multipart/form-data):
   name:           string, required
-  mobile_number:  string, required
+  mobile_number:  string, required,
+                  Philippine mobile (09 + 9 digits;
+                  +639 is accepted and normalized)
   role:           string, required,
                   in:client,worker
   barangay_id:    integer, required
@@ -612,7 +614,9 @@ POST /api/user/profile
 
 Request Body:
   name:           string, optional
-  mobile_number:  string, optional
+  mobile_number:  string, optional,
+                  Philippine mobile (09 + 9 digits;
+                  +639 is accepted and normalized)
   barangay_id:    integer, optional,
                   exists:barangays,id
   profile_photo:  file, optional
