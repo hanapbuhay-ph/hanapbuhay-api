@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\JobPost;
 
+use App\Helpers\DistanceHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\JobPost\CreateJobPostRequest;
 use App\Http\Requests\JobPost\UpdateJobPostRequest;
@@ -87,6 +88,19 @@ class JobPostController extends Controller
         $profile = $post->workerProfile;
         $worker = $profile?->user;
 
+        $clientBarangay = $request->user()?->barangay ?? $request->user()?->load('barangay')?->barangay;
+        $workerBarangay = $worker?->barangay;
+        $photoPath = $worker?->profile_photo_path;
+        $distanceKm = ($clientBarangay && $workerBarangay)
+            ? DistanceHelper::haversine(
+                (float) $clientBarangay->latitude,
+                (float) $clientBarangay->longitude,
+                (float) $workerBarangay->latitude,
+                (float) $workerBarangay->longitude,
+            )
+            : null;
+        $distanceLabel = $distanceKm !== null ? "~{$distanceKm} km" : 'Distance unavailable';
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -97,10 +111,14 @@ class JobPostController extends Controller
                     'worker' => [
                         'user_id' => $worker?->id,
                         'name' => $worker?->name,
-                        'profile_photo_url' => $worker?->profile_photo_path
-                            ? asset('storage/'.$worker->profile_photo_path)
+                        'profile_photo_url' => $photoPath
+                            ? (str_starts_with($photoPath, 'http://') || str_starts_with($photoPath, 'https://')
+                                ? $photoPath
+                                : app(\App\Services\Media\MediaStorageService::class)->publicUrl($photoPath))
                             : null,
-                        'barangay' => $worker?->barangay?->name,
+                        'barangay' => $workerBarangay?->name,
+                        'distance_km' => $distanceKm,
+                        'distance_label' => $distanceLabel,
                         'average_rating' => (float) ($profile?->average_rating ?? 0),
                         'total_reviews' => $profile?->total_reviews ?? 0,
                         'trust_tier' => $profile?->trust_tier,
@@ -120,8 +138,8 @@ class JobPostController extends Controller
                     'is_active' => $post->is_active,
                     'images' => $post->images->map(fn ($img) => [
                         'id' => $img->id,
-                        'image_url' => asset('storage/'.$img->image_path),
-                        'thumbnail_url' => $img->thumbnail_path ? asset('storage/'.$img->thumbnail_path) : null,
+                        'image_url' => app(\App\Services\Media\MediaStorageService::class)->publicUrl($img->image_path),
+                        'thumbnail_url' => app(\App\Services\Media\MediaStorageService::class)->publicUrl($img->thumbnail_path),
                         'display_order' => $img->display_order,
                     ])->values()->all(),
                     'created_at' => $post->created_at?->toIso8601String(),

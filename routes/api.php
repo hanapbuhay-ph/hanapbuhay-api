@@ -2,8 +2,10 @@
 
 use App\Http\Controllers\Admin\AdminAuditLogController;
 use App\Http\Controllers\Admin\AdminBookingController;
+use App\Http\Controllers\Admin\AdminChatLogController;
 use App\Http\Controllers\Admin\AdminDeletionController;
 use App\Http\Controllers\Admin\AdminJobPostController;
+use App\Http\Controllers\Admin\AdminNotificationController;
 use App\Http\Controllers\Admin\AdminRatingController;
 use App\Http\Controllers\Admin\AdminReportController;
 use App\Http\Controllers\Admin\AdminSettingsController;
@@ -16,11 +18,14 @@ use App\Http\Controllers\Auth\EmailVerificationController;
 use App\Http\Controllers\Auth\GoogleAuthController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Booking\BookingController;
+use App\Http\Controllers\Client\ClientController;
 use App\Http\Controllers\Feed\FeedController;
 use App\Http\Controllers\JobPost\JobPostController;
 use App\Http\Controllers\JobPost\JobPostImageController;
+use App\Http\Controllers\MediaController;
 use App\Http\Controllers\Message\MessageController;
 use App\Http\Controllers\Notification\NotificationController;
+use App\Http\Controllers\PresenceController;
 use App\Http\Controllers\PublicController;
 use App\Http\Controllers\Rating\RatingController;
 use App\Http\Controllers\Report\ReportController;
@@ -38,11 +43,20 @@ use Illuminate\Support\Facades\Route;
 Route::get('ping', [PublicController::class, 'ping']);
 Route::get('barangays', [PublicController::class, 'barangays']);
 Route::get('service-categories', [PublicController::class, 'serviceCategories']);
+Route::get('media/private', [MediaController::class, 'show'])
+    ->middleware(['signed', 'throttle:60,1'])
+    ->name('media.private');
 
 Route::prefix('auth')->group(function () {
     Route::post('register', [RegisterController::class, 'register']);
     Route::post('login', [AuthController::class, 'login']);
+    Route::post('login/verify-otp', [AuthController::class, 'verifyLoginOtp']);
+    Route::post('login/resend-otp', [AuthController::class, 'resendLoginOtp']);
     Route::post('google', [GoogleAuthController::class, 'handleGoogleToken']);
+    Route::post('admin/login', [AuthController::class, 'adminLogin']);
+    Route::post('admin/login/verify-otp', [AuthController::class, 'verifyAdminLoginOtp']);
+    Route::post('admin/login/resend-otp', [AuthController::class, 'resendAdminLoginOtp']);
+    Route::post('admin/google', [GoogleAuthController::class, 'handleAdminGoogleToken']);
     Route::post('email/verify', [EmailVerificationController::class, 'verify']);
     Route::post('email/resend-otp', [AuthController::class, 'resendOtp']);
     Route::post('password/forgot', [AuthController::class, 'forgotPassword']);
@@ -55,17 +69,25 @@ Route::prefix('auth')->group(function () {
 | Protected Routes — valid Sanctum token required
 |--------------------------------------------------------------------------
 */
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'active'])->group(function () {
+    Route::post('presence/heartbeat', [PresenceController::class, 'heartbeat']);
     Route::post('auth/logout', [AuthController::class, 'logout']);
     Route::post('auth/google/complete-profile', [GoogleAuthController::class, 'completeProfile']);
     Route::get('user', [AuthController::class, 'me']);
     Route::post('user/profile', [AuthController::class, 'updateProfile']);
+    Route::get('user/password/cooldown', [AuthController::class, 'passwordChangeCooldown']);
     Route::post('user/password', [AuthController::class, 'changePassword']);
     Route::get('user/sessions', [AuthController::class, 'sessions']);
+    Route::post('user/sessions/revoke-all', [AuthController::class, 'revokeAllSessions']);
     Route::delete('user/sessions/{tokenId}', [AuthController::class, 'revokeSession']);
     // Spec alias — FCM token update
     Route::post('user/fcm-token', [NotificationController::class, 'registerDevice']);
+    Route::get('user/notification-preferences', [AuthController::class, 'notificationPreferences']);
+    Route::post('user/notification-preferences', [AuthController::class, 'updateNotificationPreferences']);
+    Route::get('user/two-factor', [AuthController::class, 'twoFactorPreference']);
+    Route::post('user/two-factor', [AuthController::class, 'updateTwoFactorPreference']);
     // Account deletion (user side)
+    Route::get('user/delete-account', [AuthController::class, 'deletionRequestStatus']);
     Route::post('user/delete-account', [AuthController::class, 'requestDeletion']);
     Route::delete('user/delete-account', [AuthController::class, 'cancelDeletionRequest']);
 
@@ -86,7 +108,7 @@ Route::middleware('auth:sanctum')->group(function () {
 | Booking Routes
 |--------------------------------------------------------------------------
 */
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::get('bookings', [BookingController::class, 'index']);
     Route::get('bookings/{id}', [BookingController::class, 'show']);
     Route::post('bookings/{id}/cancel', [BookingController::class, 'cancel']);
@@ -95,11 +117,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('bookings/{id}/status', [BookingController::class, 'updateStatus']);
 });
 
-Route::middleware(['auth:sanctum', 'client'])->group(function () {
+Route::middleware(['auth:sanctum', 'active', 'client'])->group(function () {
     Route::post('bookings', [BookingController::class, 'store']);
+    Route::post('bookings/{id}/reschedule', [BookingController::class, 'reschedule']);
 });
 
-Route::middleware(['auth:sanctum', 'worker'])->group(function () {
+Route::middleware(['auth:sanctum', 'active', 'worker'])->group(function () {
+    Route::get('clients/{clientId}', [ClientController::class, 'show']);
     Route::post('bookings/{id}/accept', [BookingController::class, 'accept']);
     Route::post('bookings/{id}/decline', [BookingController::class, 'decline']);
     Route::post('bookings/{id}/respond', [BookingController::class, 'respond']); // spec unified endpoint
@@ -112,7 +136,7 @@ Route::middleware(['auth:sanctum', 'worker'])->group(function () {
 | Ratings Routes (spec URL: POST /api/ratings)
 |--------------------------------------------------------------------------
 */
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::post('ratings', [RatingController::class, 'store']); // spec §H1
 });
 
@@ -121,7 +145,8 @@ Route::middleware('auth:sanctum')->group(function () {
 | Report Routes
 |--------------------------------------------------------------------------
 */
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'active'])->group(function () {
+    Route::get('report-reasons', [PublicController::class, 'reportReasons']);
     Route::post('reports', [ReportController::class, 'store']);
     Route::get('reports', [ReportController::class, 'index']);
     Route::get('reports/{id}', [ReportController::class, 'show']);
@@ -132,7 +157,7 @@ Route::middleware('auth:sanctum')->group(function () {
 | Message Routes
 |--------------------------------------------------------------------------
 */
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'active'])->group(function () {
     // Spec URLs
     Route::get('messages', [MessageController::class, 'inbox']);
     Route::get('messages/{bookingId}', [MessageController::class, 'thread']);
@@ -148,7 +173,7 @@ Route::middleware('auth:sanctum')->group(function () {
 | Tracking Routes
 |--------------------------------------------------------------------------
 */
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::post('bookings/{id}/tracking/start', [TrackingController::class, 'start']);
     Route::post('bookings/{id}/tracking/update', [TrackingController::class, 'update']);
     Route::post('bookings/{id}/tracking/location', [TrackingController::class, 'location']); // spec alias
@@ -161,7 +186,7 @@ Route::middleware('auth:sanctum')->group(function () {
 | Notification Routes
 |--------------------------------------------------------------------------
 */
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::post('notifications/register-device', [NotificationController::class, 'registerDevice']);
     Route::get('notifications', [NotificationController::class, 'index']);
     Route::post('notifications/read-all', [NotificationController::class, 'markAllRead']);
@@ -173,7 +198,8 @@ Route::middleware('auth:sanctum')->group(function () {
 | Worker Routes — auth:sanctum + worker role required
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth:sanctum', 'worker'])->prefix('worker')->group(function () {
+Route::middleware(['auth:sanctum', 'active', 'worker'])->prefix('worker')->group(function () {
+    Route::get('profile', [WorkerProfileController::class, 'show']);
     Route::post('verification/submit', [VerificationController::class, 'submit']);
     Route::get('verification/status', [VerificationController::class, 'status']);
     Route::post('profile', [WorkerProfileController::class, 'update']);
@@ -195,24 +221,40 @@ Route::middleware(['auth:sanctum', 'worker'])->prefix('worker')->group(function 
 | Admin Routes — auth:sanctum + admin role required
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function () {
+Route::middleware(['auth:sanctum', 'active', 'admin'])->prefix('admin')->group(function () {
+    // Shared admin notification inbox
+    Route::get('notifications', [AdminNotificationController::class, 'index']);
+    Route::post('notifications/read-all', [AdminNotificationController::class, 'markAllRead']);
+    Route::post('notifications/{id}/read', [AdminNotificationController::class, 'markRead'])->whereNumber('id');
+    Route::delete('notifications', [AdminNotificationController::class, 'destroyAll']);
+    Route::delete('notifications/{id}', [AdminNotificationController::class, 'destroy'])->whereNumber('id');
+
     // Verification management
     Route::get('verifications', [AdminVerificationController::class, 'index']);
     Route::get('verifications/pending', [AdminVerificationController::class, 'pending']); // spec §K2 alias
+    Route::get('verifications/{workerProfileId}', [AdminVerificationController::class, 'show']);
     Route::post('verifications/{workerProfileId}/review', [AdminVerificationController::class, 'review']);
 
     // User management
+    Route::post('users', [AdminUserController::class, 'store']);
     Route::get('users', [AdminUserController::class, 'index']);
     Route::get('users/{id}', [AdminUserController::class, 'show']);
+    Route::get('users/{id}/activity/{type}', [AdminUserController::class, 'activity'])
+        ->whereIn('type', ['bookings', 'reviews-received', 'reviews-given']);
+    Route::patch('users/{id}', [AdminUserController::class, 'update']);
+    Route::delete('users/{id}', [AdminUserController::class, 'destroy']);
     Route::patch('users/{id}/toggle-active', [AdminUserController::class, 'toggleActive']);  // legacy
     Route::post('users/{id}/toggle-status', [AdminUserController::class, 'toggleStatus']);  // spec §K7
 
     // Booking oversight
     Route::get('bookings', [AdminBookingController::class, 'index']);
     Route::get('bookings/{id}', [AdminBookingController::class, 'show']);
+    Route::post('bookings', [AdminBookingController::class, 'store']);
+    Route::post('bookings/{id}/reschedule', [AdminBookingController::class, 'reschedule']);
 
     // Report management
     Route::get('reports', [AdminReportController::class, 'index']);
+    Route::post('reports', [AdminReportController::class, 'store']);
     Route::get('reports/{id}', [AdminReportController::class, 'show']);
     Route::patch('reports/{id}/resolve', [AdminReportController::class, 'resolve']);
 
@@ -223,24 +265,47 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
     Route::post('workers/{workerProfileId}/trust-tier', [AdminWorkerController::class, 'updateTrustTier']);
 
     // Ratings oversight
+    Route::get('ratings/users', [AdminRatingController::class, 'users']);
     Route::get('ratings', [AdminRatingController::class, 'index']);
     Route::delete('ratings/{id}', [AdminRatingController::class, 'destroy']);
 
     // Force cancel booking
     Route::post('bookings/{id}/cancel', [AdminBookingController::class, 'forceCancel']);
 
+    // Chat log oversight
+    Route::get('chat-logs', [AdminChatLogController::class, 'index']);
+    Route::get('chat-logs/conversations/{clientId}/{workerId}', [AdminChatLogController::class, 'showConversation']);
+    Route::get('chat-logs/{bookingId}', [AdminChatLogController::class, 'show']);
+
     // Audit logs
     Route::get('audit-logs', [AdminAuditLogController::class, 'index']);
+    Route::delete('audit-logs', [AdminAuditLogController::class, 'destroyAll']);
+    Route::delete('audit-logs/{id}', [AdminAuditLogController::class, 'destroy']);
 
     // Platform settings
     Route::get('settings', [AdminSettingsController::class, 'index']);        // spec §K17
     Route::post('settings', [AdminSettingsController::class, 'store']);        // spec §K17
+    Route::get('settings/announcements', [AdminSettingsController::class, 'listAnnouncements']);
+    Route::post('settings/announcements', [AdminSettingsController::class, 'createAnnouncement']);
+    Route::patch('settings/announcements/{announcementId}', [AdminSettingsController::class, 'updateAnnouncement']);
+    Route::delete('settings/announcements/{announcementId}', [AdminSettingsController::class, 'deleteAnnouncement']);
     Route::get('settings/categories', [AdminSettingsController::class, 'listCategories']);
     Route::post('settings/categories', [AdminSettingsController::class, 'createCategory']);
     Route::patch('settings/categories/{categoryId}', [AdminSettingsController::class, 'updateCategory']);
+    Route::delete('settings/categories/{categoryId}', [AdminSettingsController::class, 'deleteCategory']);
+    Route::get('settings/report-reasons', [AdminSettingsController::class, 'listReportReasons']);
+    Route::post('settings/report-reasons', [AdminSettingsController::class, 'createReportReason']);
+    Route::patch('settings/report-reasons/{reportReasonId}', [AdminSettingsController::class, 'updateReportReason']);
+    Route::delete('settings/report-reasons/{reportReasonId}', [AdminSettingsController::class, 'deleteReportReason']);
 
     // Job post oversight
+    Route::post('posts', [AdminJobPostController::class, 'store']);
     Route::get('posts', [AdminJobPostController::class, 'index']);
+    Route::get('posts/{id}', [AdminJobPostController::class, 'show']);
+    Route::put('posts/{id}', [AdminJobPostController::class, 'update']);
+    Route::post('posts/{id}/images', [AdminJobPostController::class, 'uploadImages']);
+    Route::delete('posts/{id}/images/{imageId}', [AdminJobPostController::class, 'deleteImage']);
+    Route::delete('posts/bulk', [AdminJobPostController::class, 'bulkDestroy']);
     Route::delete('posts/{id}', [AdminJobPostController::class, 'destroy']);
 
     // Account deletion queue

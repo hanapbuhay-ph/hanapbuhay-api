@@ -12,6 +12,8 @@ class VerificationDocumentFactory extends Factory
         return [
             'worker_profile_id' => WorkerProfile::factory(),
             'document_type'     => $this->faker->randomElement([
+                'government_id_front',
+                'government_id_back',
                 'government_id',
                 'barangay_certificate',
                 'selfie_with_id',

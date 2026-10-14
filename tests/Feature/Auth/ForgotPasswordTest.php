@@ -25,9 +25,14 @@ it('returns 200 with success message for a registered email', function () {
     $response->assertOk()->assertJson([
         'success' => true,
         'message' => 'If that email is registered, a password reset code has been sent.',
+        'data' => ['otp_expires_in_seconds' => OtpCode::VALIDITY_SECONDS],
     ]);
 
-    Mail::assertSent(OtpMail::class, fn (OtpMail $mail) => $mail->hasTo('juan@email.com'));
+    Mail::assertQueued(
+        OtpMail::class,
+        fn (OtpMail $mail) => $mail->hasTo('juan@email.com')
+            && str_contains($mail->render(), '5 minutes'),
+    );
 });
 
 it('returns 200 with same success message when email is not registered', function () {
@@ -36,6 +41,7 @@ it('returns 200 with same success message when email is not registered', functio
     $response->assertOk()->assertJson([
         'success' => true,
         'message' => 'If that email is registered, a password reset code has been sent.',
+        'data' => ['otp_expires_in_seconds' => OtpCode::VALIDITY_SECONDS],
     ]);
 
     Mail::assertNothingSent();
@@ -83,7 +89,8 @@ it('creates a password_reset OTP record with correct type and expires_at', funct
         ->first();
 
     expect($otp)->not->toBeNull()
-        ->and($otp->expires_at->toDateTimeString())->toBe('2025-01-01 10:10:00');
+        ->and($otp->expires_at->toDateTimeString())->toBe('2025-01-01 10:05:00');
+    expect(OtpCode::VALIDITY_MINUTES)->toBe(5);
 
     Carbon::setTestNow();
 });
@@ -92,26 +99,26 @@ it('invalidates previous unused password_reset OTPs when a new one is requested'
     $user = User::factory()->create(['email' => 'juan@email.com']);
 
     OtpCode::create([
-        'email'      => $user->email,
-        'code'       => '111111',
-        'type'       => 'password_reset',
-        'expires_at' => Carbon::now()->addMinutes(10),
-        'used_at'    => null,
+        'email' => $user->email,
+        'code' => '111111',
+        'type' => 'password_reset',
+        'expires_at' => Carbon::now()->addMinutes(OtpCode::VALIDITY_MINUTES),
+        'used_at' => null,
     ]);
 
     $this->postJson(FORGOT_PASSWORD_URL, ['email' => 'juan@email.com']);
 
     // Old OTP must be invalidated
     $this->assertDatabaseMissing('otp_codes', [
-        'email'   => 'juan@email.com',
-        'code'    => '111111',
+        'email' => 'juan@email.com',
+        'code' => '111111',
         'used_at' => null,
     ]);
 
     // New OTP must exist
     $this->assertDatabaseHas('otp_codes', [
-        'email'   => 'juan@email.com',
-        'type'    => 'password_reset',
+        'email' => 'juan@email.com',
+        'type' => 'password_reset',
         'used_at' => null,
     ]);
 });

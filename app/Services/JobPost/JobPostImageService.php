@@ -7,7 +7,6 @@ use App\Models\JobPostImage;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Intervention\Image\Drivers\Gd\Driver;
 use Intervention\Image\Encoders\JpegEncoder;
@@ -54,12 +53,14 @@ class JobPostImageService
             if ($img->width() > self::MAX_DIMENSION || $img->height() > self::MAX_DIMENSION) {
                 $img->scaleDown(self::MAX_DIMENSION, self::MAX_DIMENSION);
             }
-            Storage::disk('public')->put($imagePath, $img->encode($encoder)->toString());
+            $imagePath = app(\App\Services\Media\MediaStorageService::class)
+                ->storePublicContents($img->encode($encoder)->toString(), $imagePath, 'jpg');
 
             // Thumbnail — square crop from centre
             $thumb = $manager->decode($file->getRealPath());
             $thumb->cover(self::THUMB_SIZE, self::THUMB_SIZE);
-            Storage::disk('public')->put($thumbPath, $thumb->encode($encoder)->toString());
+            $thumbPath = app(\App\Services\Media\MediaStorageService::class)
+                ->storePublicContents($thumb->encode($encoder)->toString(), $thumbPath, 'jpg');
 
             $created[] = $post->images()->create([
                 'image_path' => $imagePath,
@@ -128,8 +129,8 @@ class JobPostImageService
     {
         return [
             'id' => $img->id,
-            'image_url' => asset('storage/'.$img->image_path),
-            'thumbnail_url' => $img->thumbnail_path ? asset('storage/'.$img->thumbnail_path) : null,
+            'image_url' => app(\App\Services\Media\MediaStorageService::class)->publicUrl($img->image_path),
+            'thumbnail_url' => app(\App\Services\Media\MediaStorageService::class)->publicUrl($img->thumbnail_path),
             'display_order' => $img->display_order,
         ];
     }

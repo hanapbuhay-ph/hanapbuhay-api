@@ -4,6 +4,7 @@ use App\Models\Booking;
 use App\Models\ServiceCategory;
 use App\Models\User;
 use App\Models\WorkerProfile;
+use App\Services\Notification\NotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -99,6 +100,31 @@ it('cannot cancel a completed booking', function () {
         ->postJson("/api/bookings/{$booking->id}/cancel", ['reason' => 'Too late'])
         ->assertStatus(422)
         ->assertJsonPath('message', 'Booking cannot be cancelled.');
+});
+
+it('notifies the worker when a client reschedules a booking', function () {
+    $client = User::factory()->create(['role' => 'client']);
+    $worker = workerUser();
+    $booking = bookingWithStatus('pending', $client, $worker);
+
+    $this->mock(NotificationService::class)
+        ->shouldReceive('notify')
+        ->once()
+        ->withArgs(fn (User $user, string $title, string $body, string $type): bool =>
+            $user->id === $worker->id && $type === 'booking_rescheduled'
+        )
+        ->shouldReceive('sendPush')
+        ->once()
+        ->withArgs(fn (User $user, string $title, string $body, array $data): bool =>
+            $user->id === $worker->id && $data['type'] === 'booking_rescheduled'
+        );
+
+    $this->actingAs($client)
+        ->postJson("/api/bookings/{$booking->id}/reschedule", [
+            'scheduled_at' => now()->addDays(4)->toIso8601String(),
+        ])
+        ->assertOk()
+        ->assertJsonPath('success', true);
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────

@@ -42,16 +42,11 @@ class FeedService
                 'serviceCategory',
                 'images',
             ])
-            // Only show posts whose worker is approved and not banned
-            ->whereHas('workerProfile', function ($q) {
-                $q->where('verification_status', 'approved')
-                    ->where(function ($inner) {
-                        $inner->whereNull('trust_tier')
-                            ->orWhereNotIn('trust_tier', ['flagged', 'revoked']);
-                    });
-            })
             // Also require worker account to be active
-            ->whereHas('workerProfile.user', fn ($q) => $q->where('is_active', true));
+            ->whereHas('workerProfile.user', fn ($q) => $q->where('is_active', true))
+            ->whereHas('workerProfile', fn ($q) => $q
+                ->whereNull('trust_tier')
+                ->orWhere('trust_tier', '!=', 'revoked'));
 
         // ── Filters ──────────────────────────────────────────────────────────
 
@@ -139,6 +134,7 @@ class FeedService
         $profile = $post->workerProfile;
         $worker = $profile?->user;
         $workerBarangay = $worker?->barangay;
+        $photoPath = $worker?->profile_photo_path;
 
         $distanceLabel = $distanceKm !== null ? "~{$distanceKm} km" : 'Distance unavailable';
 
@@ -148,8 +144,10 @@ class FeedService
             'worker' => [
                 'user_id' => $worker?->id,
                 'name' => $worker?->name,
-                'profile_photo_url' => $worker?->profile_photo_path
-                    ? asset('storage/'.$worker->profile_photo_path)
+                'profile_photo_url' => $photoPath
+                    ? (str_starts_with($photoPath, 'http://') || str_starts_with($photoPath, 'https://')
+                        ? $photoPath
+                        : app(\App\Services\Media\MediaStorageService::class)->publicUrl($photoPath))
                     : null,
                 'barangay' => $workerBarangay?->name,
                 'barangay_id' => $worker?->barangay_id,
@@ -159,6 +157,7 @@ class FeedService
                 'total_reviews' => $profile?->total_reviews ?? 0,
                 'trust_tier' => $profile?->trust_tier,
                 'verification_status' => $profile?->verification_status,
+                'availability_status' => $profile?->availability_status,
             ],
             'category' => [
                 'id' => $post->serviceCategory?->id,
@@ -173,8 +172,8 @@ class FeedService
             'is_available' => $post->is_available,
             'images' => $post->images->map(fn ($img) => [
                 'id' => $img->id,
-                'thumbnail_url' => $img->thumbnail_path ? asset('storage/'.$img->thumbnail_path) : null,
-                'image_url' => asset('storage/'.$img->image_path),
+                'thumbnail_url' => app(\App\Services\Media\MediaStorageService::class)->publicUrl($img->thumbnail_path),
+                'image_url' => app(\App\Services\Media\MediaStorageService::class)->publicUrl($img->image_path),
                 'display_order' => $img->display_order,
             ])->values()->all(),
             'posted_at' => $post->created_at?->toIso8601String(),

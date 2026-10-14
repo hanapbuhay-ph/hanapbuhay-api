@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Auth;
 
+use App\Rules\PhilippineMobileNumber;
 use Illuminate\Foundation\Http\FormRequest;
 
 class CompleteProfileRequest extends FormRequest
@@ -11,11 +12,20 @@ class CompleteProfileRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('mobile_number')) {
+            $this->merge([
+                'mobile_number' => PhilippineMobileNumber::normalize($this->input('mobile_number')),
+            ]);
+        }
+    }
+
     public function rules(): array
     {
         return [
             'name'          => ['required', 'string', 'max:255'],
-            'mobile_number' => ['required', 'string', 'max:20'],
+            'mobile_number' => ['required', 'string', new PhilippineMobileNumber],
             'role'          => ['required', 'in:client,worker'],
             'barangay_id'   => ['required', 'exists:barangays,id'],
             'profile_photo' => ['sometimes', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
@@ -28,7 +38,6 @@ class CompleteProfileRequest extends FormRequest
             'name.required'          => 'Your full name is required.',
             'name.max'               => 'Name must not exceed 255 characters.',
             'mobile_number.required' => 'A mobile number is required.',
-            'mobile_number.max'      => 'Mobile number must not exceed 20 characters.',
             'role.required'          => 'Please select a role (client or worker).',
             'role.in'                => 'Role must be either "client" or "worker".',
             'barangay_id.required'   => 'Please select your barangay.',

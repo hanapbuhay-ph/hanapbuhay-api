@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\CreateCategoryRequest;
-use App\Http\Requests\Admin\PostAnnouncementRequest;
 use App\Http\Requests\Admin\UpdateCategoryRequest;
 use App\Services\Admin\AdminService;
 use Illuminate\Http\JsonResponse;
@@ -85,6 +84,65 @@ class AdminSettingsController extends Controller
         ]);
     }
 
+    public function listAnnouncements(): JsonResponse
+    {
+        $announcements = $this->adminService->listAnnouncements();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Announcements retrieved.',
+            'data' => $announcements,
+        ]);
+    }
+
+    public function createAnnouncement(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:200'],
+            'body' => ['required', 'string', 'max:1000'],
+            'status' => ['sometimes', 'in:draft,published,archived'],
+            'target_audience' => ['sometimes', 'in:all,clients,workers'],
+            'expires_at' => ['nullable', 'date', 'after:today'],
+        ]);
+
+        $announcement = $this->adminService->createAnnouncement($request->user(), $validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Announcement created.',
+            'data' => $announcement,
+        ], 201);
+    }
+
+    public function updateAnnouncement(Request $request, int|string $announcementId): JsonResponse
+    {
+        $validated = $request->validate([
+            'title' => ['sometimes', 'string', 'max:200'],
+            'body' => ['sometimes', 'string', 'max:1000'],
+            'status' => ['sometimes', 'in:draft,published,archived'],
+            'target_audience' => ['sometimes', 'in:all,clients,workers'],
+            'expires_at' => ['nullable', 'date', 'after:today'],
+        ]);
+
+        $announcement = $this->adminService->updateAnnouncement($request->user(), $announcementId, $validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Announcement updated.',
+            'data' => $announcement,
+        ]);
+    }
+
+    public function deleteAnnouncement(Request $request, int|string $announcementId): JsonResponse
+    {
+        $this->adminService->deleteAnnouncement($request->user(), $announcementId);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Announcement deleted.',
+        ]);
+    }
+
     // ── Sub-resource routes (existing) ────────────────────────────────────────
 
     /**
@@ -118,7 +176,7 @@ class AdminSettingsController extends Controller
     /**
      * PATCH /api/admin/settings/categories/{categoryId}
      */
-    public function updateCategory(UpdateCategoryRequest $request, int $categoryId): JsonResponse
+    public function updateCategory(UpdateCategoryRequest $request, int|string $categoryId): JsonResponse
     {
         $category = $this->adminService->updateCategory($request->user(), $categoryId, $request->validated());
 
@@ -128,4 +186,88 @@ class AdminSettingsController extends Controller
             'data'    => $category,
         ]);
     }
-}
+
+    /**
+     * DELETE /api/admin/settings/categories/{categoryId}
+     */
+    public function deleteCategory(Request $request, int|string $categoryId): JsonResponse
+    {
+        $this->adminService->deleteCategory($request->user(), $categoryId);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Category deleted.',
+            'data'    => null,
+        ]);
+    }
+    /**
+     * GET /api/admin/settings/report-reasons
+     */
+    public function listReportReasons(Request $request): JsonResponse
+    {
+        $reasons = $this->adminService->listReportReasons($request->query('audience'));
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Report reasons retrieved.',
+            'data'    => $reasons,
+        ]);
+    }
+
+    /**
+     * POST /api/admin/settings/report-reasons
+     */
+    public function createReportReason(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'code' => ['nullable', 'string', 'max:100', 'regex:/^[a-z0-9_\-]+$/'],
+            'label' => ['required', 'string', 'max:150'],
+            'description' => ['nullable', 'string', 'max:500'],
+            'audience' => ['sometimes', 'in:client,worker'],
+            'is_active' => ['sometimes', 'boolean'],
+        ]);
+
+        $reason = $this->adminService->createReportReason($request->user(), $validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Report reason created.',
+            'data' => $reason,
+        ], 201);
+    }
+
+    /**
+     * PATCH /api/admin/settings/report-reasons/{reportReasonId}
+     */
+    public function updateReportReason(Request $request, int|string $reportReasonId): JsonResponse
+    {
+        $validated = $request->validate([
+            'code' => ['sometimes', 'string', 'max:100', 'regex:/^[a-z0-9_\-]+$/'],
+            'label' => ['sometimes', 'string', 'max:150'],
+            'description' => ['nullable', 'string', 'max:500'],
+            'audience' => ['sometimes', 'in:client,worker'],
+            'is_active' => ['sometimes', 'boolean'],
+        ]);
+
+        $reason = $this->adminService->updateReportReason($request->user(), $reportReasonId, $validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Report reason updated.',
+            'data' => $reason,
+        ]);
+    }
+
+    /**
+     * DELETE /api/admin/settings/report-reasons/{reportReasonId}
+     */
+    public function deleteReportReason(Request $request, int|string $reportReasonId): JsonResponse
+    {
+        $this->adminService->deleteReportReason($request->user(), $reportReasonId);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Report reason deleted.',
+            'data' => null,
+        ]);
+    }}

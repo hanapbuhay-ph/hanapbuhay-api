@@ -8,6 +8,12 @@ use Illuminate\Support\Carbon;
 
 class OtpCode extends Model
 {
+    public const VALIDITY_MINUTES = 5;
+
+    public const VALIDITY_SECONDS = self::VALIDITY_MINUTES * 60;
+
+    public const RESET_TOKEN_VALIDITY_MINUTES = 10;
+
     protected $fillable = [
         'email',
         'code',
@@ -21,7 +27,7 @@ class OtpCode extends Model
     {
         return [
             'expires_at' => 'datetime',
-            'used_at'    => 'datetime',
+            'used_at' => 'datetime',
         ];
     }
 
@@ -29,8 +35,8 @@ class OtpCode extends Model
     public function scopeValidFor(Builder $query, string $email, string $type): Builder
     {
         return $query->where('email', $email)
-                     ->where('type', $type)
-                     ->whereNull('used_at')
-                     ->where('expires_at', '>', Carbon::now());
+            ->where('type', $type)
+            ->whereNull('used_at')
+            ->where('expires_at', '>', Carbon::now());
     }
 }

@@ -19,7 +19,7 @@ function makeValidResetOtp(User $user, array $overrides = []): OtpCode
         'email'       => $user->email,
         'code'        => '739201',
         'type'        => 'password_reset',
-        'expires_at'  => Carbon::now()->addMinutes(10),
+        'expires_at'  => Carbon::now()->addMinutes(OtpCode::VALIDITY_MINUTES),
         'used_at'     => null,
         'reset_token' => VALID_RESET_TOKEN,
     ], $overrides));

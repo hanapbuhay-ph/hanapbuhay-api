@@ -1,14 +1,15 @@
 <?php
 
 use App\Models\Booking;
-use App\Models\HanapbuhayNotification;
 use App\Models\Report;
 use App\Models\ServiceCategory;
 use App\Models\User;
 use App\Models\VerificationDocument;
 use App\Models\WorkerProfile;
 use App\Services\Notification\NotificationService;
+use Database\Seeders\AdminUserSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 
 uses(RefreshDatabase::class);
 
@@ -21,24 +22,24 @@ function makeAdminUser(): User
 
 function makeReportWithStatus(string $status = 'under_review'): Report
 {
-    $client   = makeBookingClient();
-    $worker   = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $category = ServiceCategory::factory()->create();
 
     $booking = Booking::factory()->create([
-        'client_id'           => $client->id,
-        'worker_id'           => $worker->id,
+        'client_id' => $client->id,
+        'worker_id' => $worker->id,
         'service_category_id' => $category->id,
-        'status'              => 'completed',
+        'status' => 'completed',
     ]);
 
     return Report::create([
-        'booking_id'    => $booking->id,
-        'reported_by'   => $client->id,
+        'booking_id' => $booking->id,
+        'reported_by' => $client->id,
         'reported_user' => $worker->id,
-        'reason'        => 'misconduct',
-        'description'   => 'Test report.',
-        'status'        => $status,
+        'reason' => 'misconduct',
+        'description' => 'Test report.',
+        'status' => $status,
     ]);
 }
 
@@ -48,7 +49,7 @@ function makeReportWithStatus(string $status = 'under_review'): Report
 
 it('admin seeder creates the default admin account', function () {
     // Run only the AdminUserSeeder in isolation
-    $seeder = new \Database\Seeders\AdminUserSeeder();
+    $seeder = new AdminUserSeeder;
     $seeder->run();
 
     $admin = User::where('email', 'admin@hanapbuhay.com')->first();
@@ -60,24 +61,42 @@ it('admin seeder creates the default admin account', function () {
 });
 
 it('admin seeder is idempotent — running twice keeps one record', function () {
-    $seeder = new \Database\Seeders\AdminUserSeeder();
+    $seeder = new AdminUserSeeder;
     $seeder->run();
     $seeder->run();
 
     expect(User::where('email', 'admin@hanapbuhay.com')->count())->toBe(1);
 });
 
+it('admin seeder preserves the designated super admin account', function () {
+    $superAdmin = User::factory()->create([
+        'email' => User::SUPER_ADMIN_EMAIL,
+        'role' => 'super_admin',
+        'name' => 'Designated Super Admin',
+        'password' => 'KeepThisPassword123',
+    ]);
+
+    (new AdminUserSeeder)->run();
+
+    $superAdmin->refresh();
+    expect($superAdmin->role)->toBe('super_admin')
+        ->and($superAdmin->name)->toBe('Designated Super Admin')
+        ->and(Hash::check('KeepThisPassword123', $superAdmin->password))->toBeTrue();
+});
+
 it('admin seeder account can log in', function () {
-    $seeder = new \Database\Seeders\AdminUserSeeder();
+    $seeder = new AdminUserSeeder;
     $seeder->run();
 
     $this->postJson('/api/auth/login', [
-        'email'    => 'admin@hanapbuhay.com',
+        'email' => 'admin@hanapbuhay.com',
         'password' => 'Admin@1234!',
     ])
-    ->assertStatus(200)
-    ->assertJsonPath('success', true)
-    ->assertJsonPath('data.user.role', 'admin');
+        ->assertStatus(200)
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('data.requiresOtp', true);
+
+    expect(User::where('email', 'admin@hanapbuhay.com')->value('role'))->toBe('admin');
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -85,25 +104,27 @@ it('admin seeder account can log in', function () {
 // ══════════════════════════════════════════════════════════════════════════════
 
 it('admin can request resubmission for a pending verification', function () {
-    $admin   = makeAdminUser();
-    $worker  = User::factory()->create(['role' => 'worker']);
+    $admin = makeAdminUser();
+    $worker = User::factory()->create(['role' => 'worker']);
     $profile = WorkerProfile::factory()->create([
-        'user_id'             => $worker->id,
+        'user_id' => $worker->id,
         'verification_status' => 'pending',
     ]);
     VerificationDocument::factory()->create([
         'worker_profile_id' => $profile->id,
-        'status'            => 'pending',
+        'status' => 'pending',
     ]);
 
     $this->mock(NotificationService::class)
+        ->shouldReceive('notify')
+        ->once()
         ->shouldReceive('sendPush')
         ->once()
         ->withArgs(fn ($user, $title) => $user->id === $worker->id && $title === 'Resubmission Required');
 
     $this->actingAs($admin)
         ->postJson("/api/admin/verifications/{$profile->id}/review", [
-            'action'      => 'request_resubmission',
+            'action' => 'request_resubmission',
             'admin_notes' => 'Please provide clearer selfie with ID.',
         ])
         ->assertStatus(200)
@@ -114,7 +135,7 @@ it('admin can request resubmission for a pending verification', function () {
 });
 
 it('returns 422 for invalid action value in verification review', function () {
-    $admin   = makeAdminUser();
+    $admin = makeAdminUser();
     $profile = WorkerProfile::factory()->create();
 
     $this->actingAs($admin)
@@ -130,7 +151,7 @@ it('returns 422 for invalid action value in verification review', function () {
 // ══════════════════════════════════════════════════════════════════════════════
 
 it('resolving a report with suspend_user sets is_active=false on reported user', function () {
-    $admin  = makeAdminUser();
+    $admin = makeAdminUser();
     $report = makeReportWithStatus('under_review');
 
     $reportedUser = User::find($report->reported_user);
@@ -148,10 +169,10 @@ it('resolving a report with suspend_user sets is_active=false on reported user',
 });
 
 it('resolving a report with revoke_trust_tier sets trust_tier=revoked on worker profile', function () {
-    $admin  = makeAdminUser();
+    $admin = makeAdminUser();
     $report = makeReportWithStatus('under_review');
 
-    $worker  = User::find($report->reported_user);
+    $worker = User::find($report->reported_user);
     $profile = $worker->workerProfile;
     $profile->update(['trust_tier' => 'verified']);
 
@@ -166,7 +187,7 @@ it('resolving a report with revoke_trust_tier sets trust_tier=revoked on worker 
 });
 
 it('resolving without an action just updates the status', function () {
-    $admin  = makeAdminUser();
+    $admin = makeAdminUser();
     $report = makeReportWithStatus('under_review');
 
     $reportedUser = User::find($report->reported_user);
@@ -184,7 +205,7 @@ it('resolving without an action just updates the status', function () {
 });
 
 it('returns 422 for invalid action value on resolve', function () {
-    $admin  = makeAdminUser();
+    $admin = makeAdminUser();
     $report = makeReportWithStatus('under_review');
 
     $this->actingAs($admin)
@@ -200,15 +221,15 @@ it('returns 422 for invalid action value on resolve', function () {
 // ══════════════════════════════════════════════════════════════════════════════
 
 it('accepting a booking creates an in-app notification for the client', function () {
-    $client   = makeBookingClient();
-    $worker   = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $category = ServiceCategory::factory()->create();
 
     $booking = Booking::factory()->create([
-        'client_id'           => $client->id,
-        'worker_id'           => $worker->id,
+        'client_id' => $client->id,
+        'worker_id' => $worker->id,
         'service_category_id' => $category->id,
-        'status'              => 'pending',
+        'status' => 'pending',
     ]);
 
     $this->mock(NotificationService::class)
@@ -221,15 +242,15 @@ it('accepting a booking creates an in-app notification for the client', function
 });
 
 it('declining a booking creates an in-app notification for the client', function () {
-    $client   = makeBookingClient();
-    $worker   = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $category = ServiceCategory::factory()->create();
 
     $booking = Booking::factory()->create([
-        'client_id'           => $client->id,
-        'worker_id'           => $worker->id,
+        'client_id' => $client->id,
+        'worker_id' => $worker->id,
         'service_category_id' => $category->id,
-        'status'              => 'pending',
+        'status' => 'pending',
     ]);
 
     $this->mock(NotificationService::class)
@@ -242,15 +263,15 @@ it('declining a booking creates an in-app notification for the client', function
 });
 
 it('completing a booking creates an in-app notification for the client', function () {
-    $client   = makeBookingClient();
-    $worker   = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $category = ServiceCategory::factory()->create();
 
     $booking = Booking::factory()->create([
-        'client_id'           => $client->id,
-        'worker_id'           => $worker->id,
+        'client_id' => $client->id,
+        'worker_id' => $worker->id,
         'service_category_id' => $category->id,
-        'status'              => 'active',
+        'status' => 'active',
     ]);
 
     $this->mock(NotificationService::class)
@@ -263,15 +284,15 @@ it('completing a booking creates an in-app notification for the client', functio
 });
 
 it('rating a booking creates an in-app notification for the rated worker', function () {
-    $client   = makeBookingClient();
-    $worker   = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $category = ServiceCategory::factory()->create();
 
     $booking = Booking::factory()->create([
-        'client_id'           => $client->id,
-        'worker_id'           => $worker->id,
+        'client_id' => $client->id,
+        'worker_id' => $worker->id,
         'service_category_id' => $category->id,
-        'status'              => 'completed',
+        'status' => 'completed',
     ]);
 
     $this->mock(NotificationService::class)

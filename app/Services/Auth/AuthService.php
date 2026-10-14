@@ -11,8 +11,9 @@ use App\Models\WorkerProfile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
+use App\Services\Media\MediaStorageService;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -23,13 +24,24 @@ class AuthService
      * @throws InvalidCredentialsException
      * @throws EmailNotVerifiedException
      */
-    public function login(string $email, string $password): array
+    public function login(
+        string $email,
+        string $password,
+        ?string $deviceName = null,
+        ?string $ipAddress = null,
+        bool $adminPortal = false,
+    ): array
     {
         $user = User::with('barangay')->where('email', $email)->first();
 
         // Intentionally the same message for "no account" and "wrong password"
         // to avoid leaking which emails are registered (user enumeration).
-        if ($user === null || ! Hash::check($password, $user->password)) {
+        if (
+            $user === null
+            || $user->is_active === false
+            || $user->isAdmin() !== $adminPortal
+            || ! Hash::check($password, $user->password)
+        ) {
             throw new InvalidCredentialsException();
         }
 
@@ -37,12 +49,126 @@ class AuthService
             throw new EmailNotVerifiedException();
         }
 
-        $token = $user->createToken('mobile')->plainTextToken;
+        if ($user->two_factor_enabled) {
+            $code = $this->createLoginOtp($email);
+            return [
+                'token' => null,
+                'user' => $user,
+                'requires_otp' => true,
+                'otp' => $code,
+            ];
+        }
+
+        $accessToken = $user->createToken($deviceName ?: 'mobile');
+        $token = $accessToken->plainTextToken;
+        $accessToken->accessToken->forceFill([
+            'ip_address' => $ipAddress,
+            'location' => $this->resolveLoginLocation($ipAddress),
+        ])->save();
 
         return [
             'token' => $token,
             'user'  => $user,
         ];
+    }
+
+    public function verifyLoginOtp(
+        string $email,
+        string $code,
+        ?string $deviceName = null,
+        ?string $ipAddress = null,
+        bool $adminPortal = false,
+    ): ?array
+    {
+        $user = User::with('barangay')->where('email', $email)->first();
+        $otp = OtpCode::validFor($email, 'login_2fa')->latest()->first();
+
+        if (
+            $user === null
+            || $user->is_active === false
+            || $user->isAdmin() !== $adminPortal
+            || $otp === null
+            || ! hash_equals($otp->code, $code)
+        ) {
+            return null;
+        }
+
+        $otp->update(['used_at' => Carbon::now()]);
+        $accessToken = $user->createToken($deviceName ?: 'mobile');
+        $accessToken->accessToken->forceFill([
+            'ip_address' => $ipAddress,
+            'location' => $this->resolveLoginLocation($ipAddress),
+        ])->save();
+
+        return ['token' => $accessToken->plainTextToken, 'user' => $user];
+    }
+
+    public function issueAccessToken(User $user, ?string $deviceName = null, ?string $ipAddress = null): string
+    {
+        $accessToken = $user->createToken($deviceName ?: 'mobile');
+        $accessToken->accessToken->forceFill([
+            'ip_address' => $ipAddress,
+            'location' => $this->resolveLoginLocation($ipAddress),
+        ])->save();
+
+        return $accessToken->plainTextToken;
+    }
+
+    public function resendLoginOtp(string $email, bool $adminPortal = false): ?string
+    {
+        $user = User::where('email', $email)
+            ->where('two_factor_enabled', true)
+            ->first();
+
+        if ($user !== null && $user->isAdmin() !== $adminPortal) {
+            return null;
+        }
+
+        return $user === null ? null : $this->createLoginOtp($email);
+    }
+
+    private function createLoginOtp(string $email): string
+    {
+        return DB::transaction(function () use ($email): string {
+            OtpCode::where('email', $email)
+                ->where('type', 'login_2fa')
+                ->whereNull('used_at')
+                ->update(['used_at' => Carbon::now()]);
+
+            $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+            OtpCode::create([
+                'email' => $email,
+                'code' => $code,
+                'type' => 'login_2fa',
+                'expires_at' => Carbon::now()->addMinutes(OtpCode::VALIDITY_MINUTES),
+            ]);
+            return $code;
+        });
+    }
+
+    private function resolveLoginLocation(?string $ipAddress): ?string
+    {
+        if ($ipAddress === null || filter_var($ipAddress, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+            return null;
+        }
+
+        try {
+            $response = Http::timeout(2)->get("http://ip-api.com/json/{$ipAddress}", [
+                'fields' => 'status,city,regionName,country',
+            ]);
+
+            if (! $response->successful() || $response->json('status') !== 'success') {
+                return null;
+            }
+
+            return collect([
+                $response->json('city'),
+                $response->json('regionName'),
+                $response->json('country'),
+            ])->filter()->implode(', ') ?: null;
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     /**
@@ -61,10 +187,9 @@ class AuthService
                 $ext       = $request->file('profile_photo')->getClientOriginalExtension();
                 $photoPath = "photos/{$user->id}.{$ext}";
 
-                Storage::disk('public')->putFileAs(
-                    'photos',
+                $photoPath = app(MediaStorageService::class)->storePublicFile(
                     $request->file('profile_photo'),
-                    "{$user->id}.{$ext}"
+                    $photoPath,
                 );
             } catch (Throwable $e) {
                 // A failed photo upload must not block profile completion.
@@ -77,20 +202,35 @@ class AuthService
             }
         }
 
-        DB::transaction(function () use ($user, $request, $photoPath): void {
+        $validated = $request->validated();
+
+        Log::info('completeProfile validated payload', [
+            'user_id'     => $user->id,
+            'validated'   => $validated,
+            'raw_role'    => $request->input('role'),
+            'raw_barangay'=> $request->input('barangay_id'),
+        ]);
+
+        DB::transaction(function () use ($user, $validated, $photoPath): void {
             $user->update([
-                'name'               => $request->name,
-                'mobile_number'      => $request->mobile_number,
-                'role'               => $request->role,
-                'barangay_id'        => $request->barangay_id,
+                'name'               => $validated['name'],
+                'mobile_number'      => $validated['mobile_number'],
+                'role'               => $validated['role'],
+                'barangay_id'        => $validated['barangay_id'],
                 'profile_photo_path' => $photoPath,
             ]);
 
             // Create the worker profile row so verification documents
             // can be submitted immediately after profile completion.
-            if ($request->role === 'worker' && ! $user->workerProfile()->exists()) {
-                WorkerProfile::create(['user_id' => $user->id]);
+            // Default availability_status to 'available' so new workers appear
+            // in the client feed right away without needing to toggle it first.
+            if ($validated['role'] === 'worker' && ! $user->workerProfile()->exists()) {
+                WorkerProfile::create([
+                    'user_id'             => $user->id,
+                    'availability_status' => 'available',
+                ]);
             }
+            Log::info('completeProfile after update', ['user_id' => $user->id, 'role' => $user->fresh()->role]);
         });
 
         return $user->load('barangay');
@@ -129,7 +269,7 @@ class AuthService
                 'email'      => $email,
                 'code'       => $code,
                 'type'       => 'email_verification',
-                'expires_at' => Carbon::now()->addMinutes(10),
+                'expires_at' => Carbon::now()->addMinutes(OtpCode::VALIDITY_MINUTES),
                 'used_at'    => null,
             ]);
 
@@ -167,7 +307,7 @@ class AuthService
                 'email'      => $email,
                 'code'       => $code,
                 'type'       => 'password_reset',
-                'expires_at' => Carbon::now()->addMinutes(10),
+                'expires_at' => Carbon::now()->addMinutes(OtpCode::VALIDITY_MINUTES),
                 'used_at'    => null,
             ]);
 
@@ -193,6 +333,7 @@ class AuthService
 
         $otp = OtpCode::validFor($email, 'password_reset')
             ->where('code', $code)
+            ->whereNull('reset_token')
             ->latest()
             ->first();
 
@@ -202,7 +343,10 @@ class AuthService
 
         $resetToken = Str::random(64);
 
-        $otp->update(['reset_token' => $resetToken]);
+        $otp->update([
+            'reset_token' => $resetToken,
+            'expires_at' => Carbon::now()->addMinutes(OtpCode::RESET_TOKEN_VALIDITY_MINUTES),
+        ]);
 
         return $resetToken;
     }
@@ -221,8 +365,11 @@ class AuthService
             return false;
         }
 
-        $otp = OtpCode::validFor($email, 'password_reset')
+        $otp = OtpCode::where('email', $email)
+            ->where('type', 'password_reset')
             ->where('reset_token', $resetToken)
+            ->whereNull('used_at')
+            ->where('expires_at', '>', Carbon::now())
             ->latest()
             ->first();
 
@@ -255,10 +402,9 @@ class AuthService
                 $ext       = $request->file('profile_photo')->getClientOriginalExtension();
                 $photoPath = "photos/{$user->id}.{$ext}";
 
-                Storage::disk('public')->putFileAs(
-                    'photos',
+                $photoPath = app(MediaStorageService::class)->storePublicFile(
                     $request->file('profile_photo'),
-                    "{$user->id}.{$ext}"
+                    $photoPath,
                 );
             } catch (Throwable $e) {
                 Log::error('Profile photo upload failed during updateProfile', [
@@ -269,12 +415,22 @@ class AuthService
             }
         }
 
+        $emailChanged = false;
         $fields = array_filter([
             'name'               => $request->input('name'),
             'mobile_number'      => $request->input('mobile_number'),
             'barangay_id'        => $request->input('barangay_id'),
             'profile_photo_path' => $photoPath !== $user->profile_photo_path ? $photoPath : null,
         ], fn ($v) => $v !== null);
+
+        if ($request->filled('email')) {
+            $newEmail = trim($request->input('email'));
+            if (strtolower($newEmail) !== strtolower($user->email)) {
+                $fields['email'] = $newEmail;
+                $fields['email_verified_at'] = null;
+                $emailChanged = true;
+            }
+        }
 
         // Re-include photo even when path is the same (upload replaced file)
         if ($request->hasFile('profile_photo')) {
@@ -283,6 +439,11 @@ class AuthService
 
         if (! empty($fields)) {
             $user->update($fields);
+        }
+
+        if ($emailChanged) {
+            $user->refresh();
+            $user->load('barangay');
         }
 
         return $user->load('barangay');
@@ -326,6 +487,7 @@ class AuthService
             ->map(fn ($token) => [
                 'id'           => $token->id,
                 'device'       => $token->name,
+                'location'     => $token->location,
                 'last_used_at' => $token->last_used_at?->toIso8601String(),
                 'is_current'   => $token->id === $currentTokenId,
             ])
@@ -353,6 +515,11 @@ class AuthService
         return ['success' => true, 'message' => 'Session revoked.'];
     }
 
+    public function revokeAllSessions(User $user): void
+    {
+        $user->tokens()->delete();
+    }
+
     /**
      * Shape the user object returned in every auth response.
      * Single place to change the auth response user shape.
@@ -366,13 +533,53 @@ class AuthService
             'mobile_number'     => $user->mobile_number,
             'role'              => $user->role,
             'profile_photo_url' => $user->profile_photo_path
-                ? asset('storage/' . $user->profile_photo_path)
+                ? (str_starts_with($user->profile_photo_path, 'http://')
+                    || str_starts_with($user->profile_photo_path, 'https://')
+                    ? $user->profile_photo_path       // already a full URL (e.g. Google) -- use as-is
+                    : app(MediaStorageService::class)->publicUrl($user->profile_photo_path))
                 : null,
             'barangay'          => $user->barangay?->only([
                 'id', 'name', 'latitude', 'longitude',
             ]),
             'email_verified_at' => $user->email_verified_at,
             'is_google_account' => $user->is_google_account,
+            'notification_preferences' => [
+                'booking_updates' => (bool) $user->notify_booking_updates,
+                'messages'        => (bool) $user->notify_messages,
+                'promotions'      => (bool) $user->notify_promotions,
+                'push'            => (bool) $user->notify_push,
+                'email'           => (bool) $user->notify_email,
+            ],
         ];
+    }
+
+    /**
+     * @return array{booking_updates: bool, messages: bool, promotions: bool, push: bool, email: bool}
+     */
+    public function getNotificationPreferences(User $user): array
+    {
+        return [
+            'booking_updates' => (bool) $user->notify_booking_updates,
+            'messages'        => (bool) $user->notify_messages,
+            'promotions'      => (bool) $user->notify_promotions,
+            'push'            => (bool) $user->notify_push,
+            'email'           => (bool) $user->notify_email,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $preferences
+     */
+    public function updateNotificationPreferences(User $user, array $preferences): User
+    {
+        $user->update([
+            'notify_booking_updates' => (bool) ($preferences['booking_updates'] ?? $user->notify_booking_updates),
+            'notify_messages'        => (bool) ($preferences['messages'] ?? $user->notify_messages),
+            'notify_promotions'      => (bool) ($preferences['promotions'] ?? $user->notify_promotions),
+            'notify_push'            => (bool) ($preferences['push'] ?? $user->notify_push),
+            'notify_email'           => (bool) ($preferences['email'] ?? $user->notify_email),
+        ]);
+
+        return $user->fresh();
     }
 }

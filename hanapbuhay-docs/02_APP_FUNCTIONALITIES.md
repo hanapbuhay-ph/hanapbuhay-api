@@ -169,14 +169,15 @@ Splash Screen (2 seconds)
 - Changes reflected immediately across app
 
 #### A2.3 Notification Preferences
-- Toggle switches per notification type:
+- Toggle switches per notification category:
   - Booking updates (on/off)
   - Messages (on/off)
-  - Verification updates (on/off, workers only)
-  - Platform announcements (on/off)
-- Toggle switches per delivery channel:
-  - In-app notifications (always on)
-  - Push notifications (on/off)
+  - Promotions and announcements (on/off)
+- Push Notifications turns push delivery on or off for all categories.
+- Email Notifications controls booking-update emails; message notifications are
+  not sent by email.
+- Category switches control future in-app and push notifications. Turning off
+  message notifications does not remove messages from the chat inbox.
 
 ---
 

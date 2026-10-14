@@ -15,7 +15,7 @@ class AdminWorkerController extends Controller
     /**
      * POST /api/admin/workers/{workerProfileId}/trust-tier
      */
-    public function updateTrustTier(UpdateTrustTierRequest $request, int $workerProfileId): JsonResponse
+    public function updateTrustTier(UpdateTrustTierRequest $request, int|string $workerProfileId): JsonResponse
     {
         $profile = $this->adminService->updateTrustTier(
             $request->user(),

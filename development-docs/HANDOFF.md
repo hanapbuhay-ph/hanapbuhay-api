@@ -250,6 +250,8 @@ GET   /api/admin/users/{id}
 PATCH /api/admin/users/{id}/toggle-active
 GET   /api/admin/bookings
 GET   /api/admin/bookings/{id}
+POST  /api/admin/bookings
+POST  /api/admin/bookings/{id}/reschedule
 GET   /api/admin/reports
 GET   /api/admin/reports/{id}
 PATCH /api/admin/reports/{id}/resolve
@@ -374,4 +376,29 @@ Steps expected:
 
 Deployment guide reference: `06_DEPLOYMENT_GUIDE.md`
 (already written, not yet executed)
+
+---
+
+## 14. Flutter Client Integration — B4 Ratings & Reviews
+
+**B4.1 Rate & Review — ✅ Wired (client-side)**
+- `lib/screens/section_1_client/rate_review_screen.dart` loads the booking + worker,
+  collects a 5-star score and an optional comment, then submits via
+  `ApiBookingRepository.submitReview`.
+- `submitReview` now calls `POST /api/bookings/{id}/rate` with body
+  `{ score: int, comment: string }` (comment optional) — the exact B4.1 endpoint.
+- Booking Detail shows a "Rate & Review" action when
+  `status == completed && !isRated`, navigating to `/rate-review/{bookingId}`.
+- Worker rating recalculation + notification are handled server-side.
+
+**B4.2 View Own Submitted Reviews — ⚠️ BLOCKED / MISMATCH (documented, not fixed)**
+- Endpoint missing: there is **no client-facing `GET /api/ratings`**.
+  The only `GET /api/ratings` is `AdminRatingController@index` (admin
+  ratings-oversight). A client's "own submitted reviews" list is NOT available.
+- No Flutter "My Reviews" screen exists yet (spec: accessible from Profile tab).
+- Action taken per DocumentMismatch skill: recorded here and in
+  `BACKEND_PROGRESS.md`; **no backend endpoint was created** (requires
+  explicit approval before touching `hanapbuhay-api`).
+- When a client "view own submitted reviews" endpoint is approved/added, build
+  the screen with an empty state showing "No reviews yet."
 ```

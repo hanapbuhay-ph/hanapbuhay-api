@@ -11,11 +11,14 @@ use App\Http\Requests\Tracking\StopTrackingRequest;
 use App\Http\Requests\Tracking\UpdateTrackingRequest;
 use App\Models\Booking;
 use App\Models\BookingTracking;
+use App\Services\Notification\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class TrackingController extends Controller
 {
+    public function __construct(private readonly NotificationService $notifications) {}
+
     public function start(StartTrackingRequest $request, int $id): JsonResponse
     {
         $booking = Booking::find($id);
@@ -40,6 +43,14 @@ class TrackingController extends Controller
         $role === 'client'
             ? $booking->update(['is_client_tracking' => true])
             : $booking->update(['is_worker_tracking' => true]);
+
+        $recipient = $role === 'client' ? $booking->worker : $booking->client;
+        $title = $role === 'client' ? 'Client Is On The Way' : 'Worker Is On The Way';
+        $body = $role === 'client'
+            ? "The client is on the way for booking {$booking->booking_code}."
+            : "The worker is on the way for booking {$booking->booking_code}.";
+        $this->notifications->notify($recipient, $title, $body, 'tracking_started', ['booking_id' => $booking->id]);
+        $this->notifications->sendPush($recipient, $title, $body, ['booking_id' => (string) $booking->id, 'type' => 'tracking_started']);
 
         LocationTrackingStarted::dispatch($booking->id, $role);
 
@@ -139,6 +150,14 @@ class TrackingController extends Controller
         $role === 'client'
             ? $booking->update(['is_client_tracking' => false])
             : $booking->update(['is_worker_tracking' => false]);
+
+        $recipient = $role === 'client' ? $booking->worker : $booking->client;
+        $title = $role === 'client' ? 'Client Has Arrived' : 'Worker Has Arrived';
+        $body = $role === 'client'
+            ? "The client has arrived for booking {$booking->booking_code}."
+            : "The worker has arrived for booking {$booking->booking_code}.";
+        $this->notifications->notify($recipient, $title, $body, 'tracking_stopped', ['booking_id' => $booking->id]);
+        $this->notifications->sendPush($recipient, $title, $body, ['booking_id' => (string) $booking->id, 'type' => 'tracking_stopped']);
 
         LocationTrackingStopped::dispatch($booking->id, $role);
 

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureAdmin;
+use App\Http\Middleware\EnsureActive;
 use App\Http\Middleware\EnsureClient;
 use App\Http\Middleware\EnsureWorker;
 use Illuminate\Foundation\Application;
@@ -18,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withBroadcasting(
         channels: __DIR__.'/../routes/channels.php',
+        attributes: ['middleware' => ['auth:sanctum']],
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // Return null instead of redirecting to the "login" named route.
@@ -27,6 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'admin'  => EnsureAdmin::class,
+            'active' => EnsureActive::class,
             'worker' => EnsureWorker::class,
             'client' => EnsureClient::class,
         ]);

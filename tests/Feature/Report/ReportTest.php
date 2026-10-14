@@ -1,8 +1,10 @@
 <?php
 
+use App\Models\AdminNotification;
 use App\Models\Booking;
 use App\Models\Report;
 use App\Models\ServiceCategory;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -12,32 +14,33 @@ uses(RefreshDatabase::class);
 // ── Local setup closures ──────────────────────────────────────────────────────
 
 $makeBooking = function (?int $clientId = null, ?int $workerId = null): Booking {
-    $client   = $clientId ? \App\Models\User::find($clientId) : makeBookingClient();
-    $worker   = $workerId ? \App\Models\User::find($workerId) : makeApprovedBookingWorker();
+    $client = $clientId ? User::find($clientId) : makeBookingClient();
+    $worker = $workerId ? User::find($workerId) : makeApprovedBookingWorker();
     $category = ServiceCategory::factory()->create();
 
     return Booking::factory()->create([
-        'client_id'           => $client->id,
-        'worker_id'           => $worker->id,
+        'client_id' => $client->id,
+        'worker_id' => $worker->id,
         'service_category_id' => $category->id,
-        'status'              => 'completed',
+        'status' => 'completed',
     ]);
 };
 
 $basePayload = fn (Booking $booking, int $reportedUserId) => [
-    'booking_id'       => $booking->id,
+    'booking_id' => $booking->id,
     'reported_user_id' => $reportedUserId,
-    'reason'           => 'no_show',
-    'description'      => 'Worker did not show up.',
+    'reason' => 'no_show',
+    'description' => 'Worker did not show up.',
 ];
 
 // ── Happy path ────────────────────────────────────────────────────────────────
 
 it('client submits a report with evidence photos → 201, evidence_paths saved', function () use ($makeBooking, $basePayload) {
     Storage::fake('public');
+    Storage::fake('private');
 
-    $client  = makeBookingClient();
-    $worker  = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $booking = $makeBooking($client->id, $worker->id);
 
     $response = $this->actingAs($client)
@@ -54,11 +57,13 @@ it('client submits a report with evidence photos → 201, evidence_paths saved',
 
     $report = Report::find($response->json('data.report.id'));
     expect($report->evidence_paths)->toBeArray()->not->toBeEmpty();
+    $notification = AdminNotification::where('type', 'new_report')->firstOrFail();
+    expect($notification->data['url'])->toBe("/reports/{$report->id}");
 });
 
 it('client submits a report without evidence photos → 201, evidence_paths is null', function () use ($makeBooking, $basePayload) {
-    $client  = makeBookingClient();
-    $worker  = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $booking = $makeBooking($client->id, $worker->id);
 
     $response = $this->actingAs($client)
@@ -71,16 +76,16 @@ it('client submits a report without evidence photos → 201, evidence_paths is n
 });
 
 it('worker submits a report against the client → 201', function () use ($makeBooking) {
-    $client  = makeBookingClient();
-    $worker  = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $booking = $makeBooking($client->id, $worker->id);
 
     $this->actingAs($worker)
         ->postJson('/api/reports', [
-            'booking_id'       => $booking->id,
+            'booking_id' => $booking->id,
             'reported_user_id' => $client->id,
-            'reason'           => 'misconduct',
-            'description'      => 'Client was rude.',
+            'reason' => 'misconduct',
+            'description' => 'Client was rude.',
         ])
         ->assertStatus(201)
         ->assertJsonPath('success', true);
@@ -89,7 +94,7 @@ it('worker submits a report against the client → 201', function () use ($makeB
 // ── Authorization ─────────────────────────────────────────────────────────────
 
 it('unrelated user (not on the booking) → 403', function () use ($makeBooking, $basePayload) {
-    $worker  = makeApprovedBookingWorker();
+    $worker = makeApprovedBookingWorker();
     $booking = $makeBooking(null, $worker->id);
     $outsider = makeBookingClient();
 
@@ -99,7 +104,7 @@ it('unrelated user (not on the booking) → 403', function () use ($makeBooking,
 });
 
 it('unauthenticated request → 401', function () use ($makeBooking, $basePayload) {
-    $worker  = makeApprovedBookingWorker();
+    $worker = makeApprovedBookingWorker();
     $booking = $makeBooking(null, $worker->id);
 
     $this->postJson('/api/reports', $basePayload($booking, $worker->id))
@@ -109,16 +114,16 @@ it('unauthenticated request → 401', function () use ($makeBooking, $basePayloa
 // ── reported_user validation ──────────────────────────────────────────────────
 
 it('client tries to report themselves → 422', function () use ($makeBooking) {
-    $client  = makeBookingClient();
-    $worker  = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $booking = $makeBooking($client->id, $worker->id);
 
     $this->actingAs($client)
         ->postJson('/api/reports', [
-            'booking_id'       => $booking->id,
+            'booking_id' => $booking->id,
             'reported_user_id' => $client->id,
-            'reason'           => 'no_show',
-            'description'      => 'Test.',
+            'reason' => 'no_show',
+            'description' => 'Test.',
         ])
         ->assertStatus(422)
         ->assertJsonPath('success', false)
@@ -126,17 +131,17 @@ it('client tries to report themselves → 422', function () use ($makeBooking) {
 });
 
 it('client reports a user who is not on the booking → 422', function () use ($makeBooking) {
-    $client   = makeBookingClient();
-    $worker   = makeApprovedBookingWorker();
-    $booking  = $makeBooking($client->id, $worker->id);
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
+    $booking = $makeBooking($client->id, $worker->id);
     $stranger = makeBookingClient();
 
     $this->actingAs($client)
         ->postJson('/api/reports', [
-            'booking_id'       => $booking->id,
+            'booking_id' => $booking->id,
             'reported_user_id' => $stranger->id,
-            'reason'           => 'no_show',
-            'description'      => 'Test.',
+            'reason' => 'no_show',
+            'description' => 'Test.',
         ])
         ->assertStatus(422)
         ->assertJsonPath('message', 'You can only report the other party on this booking.');
@@ -151,8 +156,8 @@ it('missing booking_id → 422', function () {
     $this->actingAs($client)
         ->postJson('/api/reports', [
             'reported_user_id' => $worker->id,
-            'reason'           => 'no_show',
-            'description'      => 'Test.',
+            'reason' => 'no_show',
+            'description' => 'Test.',
         ])
         ->assertStatus(422)
         ->assertJsonStructure(['errors' => ['booking_id']]);
@@ -164,72 +169,72 @@ it('non-existent booking_id → 422', function () {
 
     $this->actingAs($client)
         ->postJson('/api/reports', [
-            'booking_id'       => 99999,
+            'booking_id' => 99999,
             'reported_user_id' => $worker->id,
-            'reason'           => 'no_show',
-            'description'      => 'Test.',
+            'reason' => 'no_show',
+            'description' => 'Test.',
         ])
         ->assertStatus(422)
         ->assertJsonStructure(['errors' => ['booking_id']]);
 });
 
 it('missing reason → 422', function () use ($makeBooking) {
-    $client  = makeBookingClient();
-    $worker  = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $booking = $makeBooking($client->id, $worker->id);
 
     $this->actingAs($client)
         ->postJson('/api/reports', [
-            'booking_id'       => $booking->id,
+            'booking_id' => $booking->id,
             'reported_user_id' => $worker->id,
-            'description'      => 'Test.',
+            'description' => 'Test.',
         ])
         ->assertStatus(422)
         ->assertJsonStructure(['errors' => ['reason']]);
 });
 
 it('invalid reason value → 422', function () use ($makeBooking) {
-    $client  = makeBookingClient();
-    $worker  = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $booking = $makeBooking($client->id, $worker->id);
 
     $this->actingAs($client)
         ->postJson('/api/reports', [
-            'booking_id'       => $booking->id,
+            'booking_id' => $booking->id,
             'reported_user_id' => $worker->id,
-            'reason'           => 'bad_vibes',
-            'description'      => 'Test.',
+            'reason' => 'bad_vibes',
+            'description' => 'Test.',
         ])
         ->assertStatus(422)
         ->assertJsonStructure(['errors' => ['reason']]);
 });
 
 it('missing description → 422', function () use ($makeBooking) {
-    $client  = makeBookingClient();
-    $worker  = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $booking = $makeBooking($client->id, $worker->id);
 
     $this->actingAs($client)
         ->postJson('/api/reports', [
-            'booking_id'       => $booking->id,
+            'booking_id' => $booking->id,
             'reported_user_id' => $worker->id,
-            'reason'           => 'no_show',
+            'reason' => 'no_show',
         ])
         ->assertStatus(422)
         ->assertJsonStructure(['errors' => ['description']]);
 });
 
 it('description exceeding 2000 chars → 422', function () use ($makeBooking) {
-    $client  = makeBookingClient();
-    $worker  = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $booking = $makeBooking($client->id, $worker->id);
 
     $this->actingAs($client)
         ->postJson('/api/reports', [
-            'booking_id'       => $booking->id,
+            'booking_id' => $booking->id,
             'reported_user_id' => $worker->id,
-            'reason'           => 'no_show',
-            'description'      => str_repeat('a', 2001),
+            'reason' => 'no_show',
+            'description' => str_repeat('a', 2001),
         ])
         ->assertStatus(422)
         ->assertJsonStructure(['errors' => ['description']]);
@@ -237,18 +242,19 @@ it('description exceeding 2000 chars → 422', function () use ($makeBooking) {
 
 it('more than 3 evidence_photos → 422', function () use ($makeBooking) {
     Storage::fake('public');
+    Storage::fake('private');
 
-    $client  = makeBookingClient();
-    $worker  = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $booking = $makeBooking($client->id, $worker->id);
 
     $this->actingAs($client)
         ->postJson('/api/reports', [
-            'booking_id'       => $booking->id,
+            'booking_id' => $booking->id,
             'reported_user_id' => $worker->id,
-            'reason'           => 'no_show',
-            'description'      => 'Test.',
-            'evidence_photos'  => [
+            'reason' => 'no_show',
+            'description' => 'Test.',
+            'evidence_photos' => [
                 UploadedFile::fake()->image('a.jpg'),
                 UploadedFile::fake()->image('b.jpg'),
                 UploadedFile::fake()->image('c.jpg'),
@@ -261,18 +267,19 @@ it('more than 3 evidence_photos → 422', function () use ($makeBooking) {
 
 it('evidence_photo that is not an image (PDF) → 422', function () use ($makeBooking) {
     Storage::fake('public');
+    Storage::fake('private');
 
-    $client  = makeBookingClient();
-    $worker  = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $booking = $makeBooking($client->id, $worker->id);
 
     $this->actingAs($client)
         ->postJson('/api/reports', [
-            'booking_id'       => $booking->id,
+            'booking_id' => $booking->id,
             'reported_user_id' => $worker->id,
-            'reason'           => 'no_show',
-            'description'      => 'Test.',
-            'evidence_photos'  => [
+            'reason' => 'no_show',
+            'description' => 'Test.',
+            'evidence_photos' => [
                 UploadedFile::fake()->create('document.pdf', 100, 'application/pdf'),
             ],
         ])
@@ -283,17 +290,17 @@ it('evidence_photo that is not an image (PDF) → 422', function () use ($makeBo
 // ── List endpoint ─────────────────────────────────────────────────────────────
 
 it('auth user sees only their own reports → 200 with pagination', function () use ($makeBooking) {
-    $client  = makeBookingClient();
-    $worker  = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $booking = $makeBooking($client->id, $worker->id);
 
     Report::create([
-        'booking_id'    => $booking->id,
-        'reported_by'   => $client->id,
+        'booking_id' => $booking->id,
+        'reported_by' => $client->id,
         'reported_user' => $worker->id,
-        'reason'        => 'no_show',
-        'description'   => 'Test.',
-        'status'        => 'under_review',
+        'reason' => 'no_show',
+        'description' => 'Test.',
+        'status' => 'under_review',
     ]);
 
     $this->actingAs($client)
@@ -313,16 +320,16 @@ it('auth user sees only their own reports → 200 with pagination', function () 
 it("other user's reports are not included in the response", function () use ($makeBooking) {
     $client1 = makeBookingClient();
     $client2 = makeBookingClient();
-    $worker  = makeApprovedBookingWorker();
+    $worker = makeApprovedBookingWorker();
     $booking = $makeBooking($client1->id, $worker->id);
 
     Report::create([
-        'booking_id'    => $booking->id,
-        'reported_by'   => $client1->id,
+        'booking_id' => $booking->id,
+        'reported_by' => $client1->id,
         'reported_user' => $worker->id,
-        'reason'        => 'no_show',
-        'description'   => 'Test.',
-        'status'        => 'under_review',
+        'reason' => 'no_show',
+        'description' => 'Test.',
+        'status' => 'under_review',
     ]);
 
     $this->actingAs($client2)
@@ -334,21 +341,21 @@ it("other user's reports are not included in the response", function () use ($ma
 // ── Show endpoint ─────────────────────────────────────────────────────────────
 
 it('reporter can view their own report → 200 with full detail', function () use ($makeBooking) {
-    $client  = makeBookingClient();
-    $worker  = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $booking = $makeBooking($client->id, $worker->id);
 
     $report = Report::create([
-        'booking_id'     => $booking->id,
-        'reported_by'    => $client->id,
-        'reported_user'  => $worker->id,
-        'reason'         => 'misconduct',
-        'description'    => 'Charged extra.',
+        'booking_id' => $booking->id,
+        'reported_by' => $client->id,
+        'reported_user' => $worker->id,
+        'reason' => 'misconduct',
+        'description' => 'Charged extra.',
         'evidence_paths' => ['reports/1/photo.jpg'],
-        'status'         => 'under_review',
+        'status' => 'under_review',
     ]);
 
-    $this->actingAs($client)
+    $response = $this->actingAs($client)
         ->getJson("/api/reports/{$report->id}")
         ->assertStatus(200)
         ->assertJsonPath('success', true)
@@ -359,27 +366,31 @@ it('reporter can view their own report → 200 with full detail', function () us
                 'status', 'admin_remarks', 'created_at',
             ]],
         ])
-        ->assertJsonPath('data.report.evidence_paths', ['reports/1/photo.jpg'])
         ->assertJsonPath('data.report.admin_remarks', null);
+
+    expect($response->json('data.report.evidence_paths.0'))
+        ->toContain('/api/media/private?')
+        ->toContain('signature=');
 });
 
-it('non-reporter (even if on the booking) cannot view the report → 403', function () use ($makeBooking) {
-    $client  = makeBookingClient();
-    $worker  = makeApprovedBookingWorker();
+it('reported worker can view a client report → 200', function () use ($makeBooking) {
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $booking = $makeBooking($client->id, $worker->id);
 
     $report = Report::create([
-        'booking_id'    => $booking->id,
-        'reported_by'   => $client->id,
+        'booking_id' => $booking->id,
+        'reported_by' => $client->id,
         'reported_user' => $worker->id,
-        'reason'        => 'no_show',
-        'description'   => 'Test.',
-        'status'        => 'under_review',
+        'reason' => 'no_show',
+        'description' => 'Test.',
+        'status' => 'under_review',
     ]);
 
     $this->actingAs($worker)
         ->getJson("/api/reports/{$report->id}")
-        ->assertStatus(403);
+        ->assertStatus(200)
+        ->assertJsonPath('data.report.id', $report->id);
 });
 
 it('non-existent report → 404', function () {

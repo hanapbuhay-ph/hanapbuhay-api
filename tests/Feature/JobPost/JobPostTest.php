@@ -45,6 +45,18 @@ it('worker can create a job post (happy path)', function () {
         ]);
 });
 
+it('creates a job post as available when availability is omitted', function () {
+    $worker = makeApprovedBookingWorker();
+    $category = ServiceCategory::factory()->create();
+    $payload = validPostPayload($category->id);
+    unset($payload['is_available']);
+
+    $this->actingAs($worker)
+        ->postJson('/api/worker/posts', $payload)
+        ->assertCreated()
+        ->assertJsonPath('data.job_post.is_available', true);
+});
+
 it('rate_display is formatted correctly for per_session type', function () {
     $worker   = makeApprovedBookingWorker();
     $category = ServiceCategory::factory()->create();

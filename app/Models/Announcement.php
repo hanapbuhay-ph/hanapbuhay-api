@@ -14,6 +14,8 @@ class Announcement extends Model
         'posted_by',
         'title',
         'body',
+        'status',
+        'target_audience',
         'expires_at',
         'is_active',
     ];

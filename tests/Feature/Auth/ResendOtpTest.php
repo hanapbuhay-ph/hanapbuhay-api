@@ -19,16 +19,16 @@ beforeEach(function () {
 
 it('resends OTP for a valid unverified email', function () {
     $user = User::factory()->create([
-        'email'             => 'juan@email.com',
+        'email' => 'juan@email.com',
         'email_verified_at' => null,
     ]);
 
     OtpCode::create([
-        'email'      => $user->email,
-        'code'       => '123456',
-        'type'       => 'email_verification',
-        'expires_at' => Carbon::now()->addMinutes(10),
-        'used_at'    => null,
+        'email' => $user->email,
+        'code' => '123456',
+        'type' => 'email_verification',
+        'expires_at' => Carbon::now()->addMinutes(OtpCode::VALIDITY_MINUTES),
+        'used_at' => null,
     ]);
 
     $response = $this->postJson(RESEND_OTP_URL, ['email' => 'juan@email.com']);
@@ -40,19 +40,19 @@ it('resends OTP for a valid unverified email', function () {
 
     // Old OTP must be invalidated
     $this->assertDatabaseMissing('otp_codes', [
-        'email'   => 'juan@email.com',
-        'code'    => '123456',
+        'email' => 'juan@email.com',
+        'code' => '123456',
         'used_at' => null,
     ]);
 
     // New OTP must exist
     $this->assertDatabaseHas('otp_codes', [
-        'email'   => 'juan@email.com',
-        'type'    => 'email_verification',
+        'email' => 'juan@email.com',
+        'type' => 'email_verification',
         'used_at' => null,
     ]);
 
-    Mail::assertSent(OtpMail::class, fn (OtpMail $mail) => $mail->hasTo('juan@email.com'));
+    Mail::assertQueued(OtpMail::class, fn (OtpMail $mail) => $mail->hasTo('juan@email.com'));
 });
 
 it('returns 200 when email is not registered', function () {
@@ -68,7 +68,7 @@ it('returns 200 when email is not registered', function () {
 
 it('returns 200 with already-verified message when email is verified', function () {
     User::factory()->create([
-        'email'             => 'juan@email.com',
+        'email' => 'juan@email.com',
         'email_verified_at' => Carbon::now(),
     ]);
 
@@ -98,7 +98,7 @@ it('returns 422 when email format is invalid', function () {
 
 it('returns 429 when rate limit is exceeded', function () {
     User::factory()->create([
-        'email'             => 'juan@email.com',
+        'email' => 'juan@email.com',
         'email_verified_at' => null,
     ]);
 

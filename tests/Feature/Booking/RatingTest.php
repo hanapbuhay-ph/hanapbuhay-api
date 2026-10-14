@@ -54,6 +54,38 @@ it('client rates a completed booking and worker stats are updated', function () 
         ->and($profile->total_reviews)->toBe(1);
 });
 
+it('rates the worker attached to the booking when user and profile ids overlap', function () use ($makeCompletedBooking) {
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
+    $otherWorker = makeApprovedBookingWorker();
+    $booking = $makeCompletedBooking($client->id, $worker->id);
+    $otherWorker->workerProfile()->update(['id' => $worker->id]);
+
+    expect($otherWorker->workerProfile->id)->toBe($worker->id);
+
+    $this->actingAs($client)
+        ->postJson("/api/bookings/{$booking->id}/rate", [
+            'score' => 5,
+            'comment' => 'Correct booking worker.',
+        ])
+        ->assertStatus(201);
+
+    $this->assertDatabaseHas('ratings_reviews', [
+        'booking_id' => $booking->id,
+        'rated_by' => $client->id,
+        'rated_user' => $worker->id,
+        'score' => 5,
+    ]);
+    $this->assertDatabaseMissing('ratings_reviews', [
+        'booking_id' => $booking->id,
+        'rated_user' => $otherWorker->id,
+    ]);
+
+    expect((float) $worker->workerProfile->fresh()->average_rating)->toBe(5.0)
+        ->and($worker->workerProfile->fresh()->total_reviews)->toBe(1)
+        ->and($otherWorker->workerProfile->fresh()->total_reviews)->toBe(0);
+});
+
 it('worker rates a completed booking and no worker stats update occurs', function () use ($makeCompletedBooking) {
     $client  = makeBookingClient();
     $worker  = makeApprovedBookingWorker();

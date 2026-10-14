@@ -2,11 +2,11 @@
 
 namespace App\Services\Auth;
 
+use App\Exceptions\BusinessRuleException;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class AccountDeletionService
 {
@@ -37,6 +37,9 @@ class AccountDeletionService
         return User::withTrashed()
             ->whereNotNull('deletion_requested_at')
             ->whereNull('deleted_at')
+            ->where(function ($query): void {
+                $query->whereNull('role')->orWhere('role', '!=', 'super_admin');
+            })
             ->with('barangay:id,name')
             ->orderBy('deletion_requested_at')
             ->paginate(15);
@@ -54,35 +57,42 @@ class AccountDeletionService
      */
     public function processDeletion(User $user): void
     {
+        if ($user->isSuperAdmin()) {
+            throw new BusinessRuleException(
+                'The super admin account cannot be deleted through a deletion request.',
+                403
+            );
+        }
+
         DB::transaction(function () use ($user): void {
             // Revoke all tokens first
             $user->tokens()->delete();
 
             // Remove stored files
             if ($user->profile_photo_path) {
-                Storage::disk('public')->delete($user->profile_photo_path);
+                app(\App\Services\Media\MediaStorageService::class)->delete($user->profile_photo_path);
             }
 
             if ($user->workerProfile) {
                 $documents = $user->workerProfile->verificationDocuments;
                 foreach ($documents as $doc) {
-                    Storage::disk('public')->delete($doc->file_path);
+                    app(\App\Services\Media\MediaStorageService::class)->delete($doc->file_path);
                 }
                 // Anonymise the worker profile
                 $user->workerProfile->update(['bio' => null]);
             }
 
             // Anonymise PII
-            $anonymousId = 'deleted_' . $user->id;
+            $anonymousId = 'deleted_'.$user->id;
             $user->update([
-                'name'                    => 'Deleted User',
-                'email'                   => "{$anonymousId}@deleted.hanapbuhay",
-                'mobile_number'           => null,
-                'profile_photo_path'      => null,
-                'google_id'               => null,
-                'password'                => null,
-                'deletion_requested_at'   => null,
-                'is_active'               => false,
+                'name' => 'Deleted User',
+                'email' => "{$anonymousId}@deleted.hanapbuhay",
+                'mobile_number' => null,
+                'profile_photo_path' => null,
+                'google_id' => null,
+                'password' => null,
+                'deletion_requested_at' => null,
+                'is_active' => false,
             ]);
 
             // Soft-delete

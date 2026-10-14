@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Booking\CancelBookingRequest;
 use App\Http\Requests\Booking\CreateBookingRequest;
 use App\Http\Requests\Booking\RateBookingRequest;
+use App\Http\Requests\Booking\RescheduleBookingRequest;
 use App\Models\Booking;
 use App\Models\User;
 use App\Services\Booking\BookingService;
@@ -65,7 +66,7 @@ class BookingController extends Controller
         ]);
     }
 
-    public function show(Request $request, int $id): JsonResponse
+    public function show(Request $request, int|string $id): JsonResponse
     {
         $booking = $this->service->find($id);
 
@@ -85,7 +86,7 @@ class BookingController extends Controller
      * Spec-defined unified accept/decline endpoint (worker only).
      * Delegates to the same BookingService methods as the individual routes.
      */
-    public function respond(Request $request, int $id): JsonResponse
+    public function respond(Request $request, int|string $id): JsonResponse
     {
         $request->validate([
             'action' => ['required', 'string', 'in:accept,decline'],
@@ -122,7 +123,7 @@ class BookingController extends Controller
         ]);
     }
 
-    public function accept(Request $request, int $id): JsonResponse
+    public function accept(Request $request, int|string $id): JsonResponse
     {
         $booking = Booking::find($id);
 
@@ -143,7 +144,7 @@ class BookingController extends Controller
         return response()->json(['success' => true, 'message' => 'Booking accepted.', 'data' => ['booking' => $result]]);
     }
 
-    public function decline(Request $request, int $id): JsonResponse
+    public function decline(Request $request, int|string $id): JsonResponse
     {
         $booking = Booking::find($id);
 
@@ -164,7 +165,7 @@ class BookingController extends Controller
         return response()->json(['success' => true, 'message' => 'Booking declined.', 'data' => ['booking' => $result]]);
     }
 
-    public function cancel(CancelBookingRequest $request, int $id): JsonResponse
+    public function cancel(CancelBookingRequest $request, int|string $id): JsonResponse
     {
         $booking = Booking::find($id);
 
@@ -191,7 +192,7 @@ class BookingController extends Controller
      *   status=active    → worker starts the job
      *   status=completed → worker marks the job done
      */
-    public function updateStatus(Request $request, int $id): JsonResponse
+    public function updateStatus(Request $request, int|string $id): JsonResponse
     {
         $request->validate([
             'status' => ['required', 'string', 'in:active,completed'],
@@ -232,7 +233,7 @@ class BookingController extends Controller
         ]);
     }
 
-    public function start(Request $request, int $id): JsonResponse
+    public function start(Request $request, int|string $id): JsonResponse
     {
         $booking = Booking::find($id);
 
@@ -253,7 +254,7 @@ class BookingController extends Controller
         return response()->json(['success' => true, 'message' => 'Booking started.', 'data' => ['booking' => $result]]);
     }
 
-    public function complete(Request $request, int $id): JsonResponse
+    public function complete(Request $request, int|string $id): JsonResponse
     {
         $booking = Booking::find($id);
 
@@ -274,7 +275,30 @@ class BookingController extends Controller
         return response()->json(['success' => true, 'message' => 'Booking completed.', 'data' => ['booking' => $result]]);
     }
 
-    public function rate(RateBookingRequest $request, int $id): JsonResponse
+    public function reschedule(RescheduleBookingRequest $request, int|string $id): JsonResponse
+    {
+        $booking = Booking::find($id);
+
+        if (! $booking) {
+            return response()->json(['success' => false, 'message' => 'Booking not found.'], 404);
+        }
+
+        if ($request->user()->id !== $booking->client_id) {
+            return response()->json(['success' => false, 'message' => 'Forbidden.'], 403);
+        }
+
+        $scheduledAt = \Carbon\Carbon::parse($request->scheduled_at);
+
+        $result = $this->service->reschedule($booking, $scheduledAt);
+
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
+
+        return response()->json(['success' => true, 'message' => 'Booking rescheduled.', 'data' => ['booking' => $this->formatBooking($result)]]);
+    }
+
+    public function rate(RateBookingRequest $request, int|string $id): JsonResponse
     {
         $booking = Booking::with('worker.workerProfile')->find($id);
 
@@ -327,12 +351,27 @@ class BookingController extends Controller
             'booking_code'     => $booking->booking_code,
             'status'           => $booking->status,
             'worker'           => [
-                'id'       => $booking->worker->id,
-                'name'     => $booking->worker->name,
-                'barangay' => $booking->worker->barangay?->name,
+                'id'                => $booking->worker->id,
+                'name'              => $booking->worker->name,
+                'profile_photo_url' => $booking->worker->profile_photo_path,
+                'barangay'          => $booking->worker->barangay?->name,
             ],
-            'service_category' => $booking->serviceCategory->name,
+            'client'           => [
+                'id'                => $booking->client->id,
+                'name'              => $booking->client->name,
+                'profile_photo_url' => $booking->client->profile_photo_path,
+                'barangay'          => $booking->client->barangay?->name,
+            ],
+            'service_category' => [
+                'id'   => $booking->serviceCategory?->id,
+                'name' => $booking->serviceCategory?->name,
+            ],
             'scheduled_at'     => $booking->scheduled_at,
+            'started_at'       => $booking->started_at,
+            'completed_at'     => $booking->completed_at,
+            'cancellation_reason' => $booking->cancellation_reason,
+            'is_client_tracking'  => $booking->is_client_tracking,
+            'is_worker_tracking'  => $booking->is_worker_tracking,
             'notes'            => $booking->notes,
             'created_at'       => $booking->created_at,
         ];

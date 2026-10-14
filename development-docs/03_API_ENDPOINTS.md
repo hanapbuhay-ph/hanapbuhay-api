@@ -199,7 +199,7 @@ Side Effects:
 - Creates user record
 - If role = 'worker': creates worker_profile record
 - Sends OTP email via Brevo
-- OTP valid for 10 minutes
+- OTP valid for 5 minutes
 ```
 
 ---
@@ -214,6 +214,11 @@ Request Body:
     "email": "juan@email.com",
     "password": "password123"
 }
+
+After five consecutive failed password attempts, mobile and admin login are
+locked for 15 minutes, including Google sign-in for the same account and IP.
+The response includes `data.retry_after_seconds` and a `Retry-After` header.
+A successful login clears the failed-attempt counter.
 
 Success Response 200:
 {
@@ -412,7 +417,10 @@ Request Body:
 Success Response 200:
 {
     "success": true,
-    "message": "Password reset code sent to your email"
+    "message": "If that email is registered, a password reset code has been sent.",
+    "data": {
+        "otp_expires_in_seconds": 300
+    }
 }
 
 Note: Always returns 200 even if email
@@ -444,7 +452,8 @@ Success Response 200:
 
 Note: reset_token is a short-lived token
 used in the next step to authorize
-the password reset.
+the password reset. It expires 10 minutes
+after the OTP is verified.
 ```
 
 ---
@@ -555,6 +564,9 @@ Response 200:
 ## C3. Change Password
 
 ```
+GET /api/user/password/cooldown
+(Protected; returns the remaining cooldown seconds, or 0)
+
 POST /api/user/password
 (Protected)
 
@@ -576,6 +588,11 @@ Error 422 (wrong current password):
     "success": false,
     "message": "Current password is incorrect"
 }
+
+Each valid password-change submission starts a one-minute cooldown. Submissions
+during that period return HTTP 429 with `data.retry_after_seconds` and a
+`Retry-After` header. The cooldown endpoint lets clients resume the countdown
+after reopening the password screen.
 ```
 
 ---
@@ -1648,6 +1665,45 @@ Response 200:
     "success": true,
     "message": "Booking force cancelled"
 }
+```
+
+---
+
+## Admin Create Booking for a Client
+
+```
+POST /api/admin/bookings
+(Admin only)
+
+Request body:
+{
+    "client_id": 12,
+    "worker_id": 34,
+    "job_post_id": 56,
+    "service_category_id": 2,
+    "scheduled_at": "2026-10-20T09:00:00+08:00",
+    "notes": "Please call before arriving"
+}
+
+job_post_id must be an active post owned by the selected worker and match the service category.
+Creates a pending booking linked to the job post. The worker must still accept or decline it.
+Both the client and worker receive in-app and push notifications.
+The action is recorded in admin_audit_logs.
+```
+
+## Admin Reschedule Pending Booking
+
+```
+POST /api/admin/bookings/{bookingId}/reschedule
+(Admin only; pending bookings only)
+
+Request body:
+{
+    "scheduled_at": "2026-10-22T10:00:00+08:00"
+}
+
+Both the client and worker receive in-app and push notifications.
+The previous and updated schedule are recorded in admin_audit_logs.
 ```
 
 ---

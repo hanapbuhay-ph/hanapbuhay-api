@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class WorkerProfile extends Model
 {
     use HasFactory;
+
     protected $fillable = [
         'user_id',
         'bio',
@@ -29,7 +30,7 @@ class WorkerProfile extends Model
     {
         return [
             'average_rating' => 'decimal:2',
-            'verified_at'    => 'datetime',
+            'verified_at' => 'datetime',
         ];
     }
 
@@ -38,9 +39,19 @@ class WorkerProfile extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function verifiedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'verified_by');
+    }
+
     public function verificationDocuments(): HasMany
     {
         return $this->hasMany(VerificationDocument::class);
+    }
+
+    public function verificationHistory(): HasMany
+    {
+        return $this->hasMany(VerificationHistory::class);
     }
 
     public function serviceCategories(): BelongsToMany
@@ -56,6 +67,11 @@ class WorkerProfile extends Model
     public function jobPosts(): HasMany
     {
         return $this->hasMany(JobPost::class);
+    }
+
+    public function portfolioPhotos(): HasMany
+    {
+        return $this->hasMany(WorkerPortfolioPhoto::class)->orderBy('display_order');
     }
 
     public function ratings(): HasMany

@@ -8,6 +8,7 @@ use App\Mail\OtpMail;
 use App\Models\OtpCode;
 use App\Models\User;
 use App\Models\WorkerProfile;
+use App\Services\AdminNotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -21,46 +22,60 @@ class RegisterController extends Controller
         try {
             DB::transaction(function () use ($request, &$user, &$otp) {
                 $user = User::create([
-                    'name'          => $request->name,
-                    'email'         => $request->email,
-                    'password'      => $request->password,
+                    'name' => $request->name,
+                    'email' => $request->email,
+                    'password' => $request->password,
                     'mobile_number' => $request->mobile_number,
-                    'role'          => $request->role,
-                    'barangay_id'   => $request->barangay_id,
+                    'role' => $request->role,
+                    'barangay_id' => $request->barangay_id,
                     // email_verified_at intentionally left null until OTP confirmed
                 ]);
 
                 // Workers get a profile row created immediately so verification
                 // documents can be submitted before the worker is approved.
+                // Default availability_status to 'available' so new workers appear
+                // in the client feed right away without needing to toggle it first.
                 if ($request->role === 'worker') {
-                    WorkerProfile::create(['user_id' => $user->id]);
+                    WorkerProfile::create([
+                        'user_id' => $user->id,
+                        'availability_status' => 'available',
+                    ]);
                 }
 
                 $otp = OtpCode::create([
-                    'email'      => $user->email,
-                    'code'       => str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT),
-                    'type'       => 'email_verification',
-                    'expires_at' => now()->addMinutes(10),
+                    'email' => $user->email,
+                    'code' => str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT),
+                    'type' => 'email_verification',
+                    'expires_at' => now()->addMinutes(OtpCode::VALIDITY_MINUTES),
                 ]);
+
+                app(AdminNotificationService::class)->create(
+                    'new_registration',
+                    'New user registered',
+                    "{$user->name} registered as a {$user->role}.",
+                    ['url' => "/users/{$user->id}"],
+                );
             });
 
-            Mail::to($user->email)->send(
+            // Queued: HTTP returns immediately (~100ms), SMTP runs in background worker.
+            Mail::to($user->email)->queue(
                 new OtpMail($otp->code, 'Verify your HanapBuhay account')
             );
 
             return response()->json([
                 'success' => true,
                 'message' => 'Registration successful. Please verify your email.',
-                'data'    => [
+                'data' => [
                     'user' => [
-                        'id'                => $user->id,
-                        'name'              => $user->name,
-                        'email'             => $user->email,
-                        'role'              => $user->role,
-                        'barangay'          => $user->barangay_id,
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'email' => $user->email,
+                        'role' => $user->role,
+                        'barangay' => $user->barangay_id,
                         'email_verified_at' => null,
                         'is_google_account' => false,
                     ],
+                    'otp_expires_in_seconds' => OtpCode::VALIDITY_SECONDS,
                 ],
             ], 201);
         } catch (Throwable $e) {

@@ -16,6 +16,7 @@ class ReportPolicy
 
     public function view(User $user, Report $report): bool
     {
-        return $user->id === $report->reported_by;
+        return $user->id === $report->reported_by
+            || $user->id === $report->reported_user;
     }
 }

@@ -4,6 +4,7 @@ namespace App\Services\JobPost;
 
 use App\Models\JobPost;
 use App\Models\User;
+use App\Services\AdminNotificationService;
 use Illuminate\Database\Eloquent\Collection;
 
 class JobPostService
@@ -12,6 +13,8 @@ class JobPostService
      * Create a new job post for a worker.
      * Business rule: one post per category per worker — the previous post in
      * that category is soft-deleted before the new one is inserted.
+     * Also syncs the worker_service_categories pivot so the worker appears in
+     * category browse results (getWorkersByCategory queries the pivot).
      */
     public function create(User $worker, array $data): JobPost
     {
@@ -22,7 +25,7 @@ class JobPostService
             ->where('service_category_id', $data['service_category_id'])
             ->delete();
 
-        return JobPost::create([
+        $post = JobPost::create([
             'worker_profile_id' => $profile->id,
             'service_category_id' => $data['service_category_id'],
             'title' => $data['title'],
@@ -32,6 +35,19 @@ class JobPostService
             'is_available' => $data['is_available'] ?? true,
             'is_active' => true,
         ]);
+
+        // Keep the pivot in sync: attach the category if not already linked.
+        // syncWithoutDetaching preserves other category rows on the worker.
+        $profile->serviceCategories()->syncWithoutDetaching([$data['service_category_id']]);
+
+        app(AdminNotificationService::class)->create(
+            'new_job_post',
+            'New job post',
+            "{$worker->name} posted “{$post->title}”.",
+            ['url' => "/job-posts/{$post->id}"],
+        );
+
+        return $post;
     }
 
     /**
@@ -91,8 +107,8 @@ class JobPostService
             'is_active' => $post->is_active,
             'images' => $images->map(fn ($img) => [
                 'id' => $img->id,
-                'image_url' => asset('storage/'.$img->image_path),
-                'thumbnail_url' => $img->thumbnail_path ? asset('storage/'.$img->thumbnail_path) : null,
+                'image_url' => app(\App\Services\Media\MediaStorageService::class)->publicUrl($img->image_path),
+                'thumbnail_url' => app(\App\Services\Media\MediaStorageService::class)->publicUrl($img->thumbnail_path),
                 'display_order' => $img->display_order,
             ])->values()->all(),
             'created_at' => $post->created_at?->toIso8601String(),

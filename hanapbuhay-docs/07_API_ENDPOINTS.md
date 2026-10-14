@@ -179,7 +179,7 @@ Validation Rules:
   email:                 required, email,
                          unique:users
   password:              required, min:8, confirmed
-  mobile_number:         required, string, max:20
+  mobile_number:         required, valid Philippine mobile (09 + 9 digits)
   role:                  required, in:client,worker
   barangay_id:           required,
                          exists:barangays,id
@@ -210,7 +210,7 @@ Side Effects:
   If role = worker: creates worker_profile
   Generates 6-digit OTP
   Sends OTP to user's email via Laravel Mail
-  OTP expires in 10 minutes
+  OTP expires in 5 minutes
 
 Response 422 (validation failed):
 {
@@ -302,6 +302,11 @@ Request Body:
     "email": "juan@email.com",
     "password": "password123"
 }
+
+After five consecutive failed password attempts, mobile and admin login are
+locked for 15 minutes, including Google sign-in for the same account and IP.
+The response includes `data.retry_after_seconds` and a `Retry-After` header.
+A successful login clears the failed-attempt counter.
 
 Response 200:
 {
@@ -431,7 +436,9 @@ POST /api/auth/google/complete-profile
 
 Request Body (multipart/form-data):
   name:           string, required
-  mobile_number:  string, required
+  mobile_number:  string, required,
+                  Philippine mobile (09 + 9 digits;
+                  +639 is accepted and normalized)
   role:           string, required,
                   in:client,worker
   barangay_id:    integer, required
@@ -507,7 +514,7 @@ Response 200:
 Note: reset_token is a short-lived temporary
 token (stored in otp_codes or cache).
 Used in next step to authorize password reset.
-Expires in 15 minutes.
+Expires 10 minutes after OTP verification.
 ```
 
 ---
@@ -612,7 +619,9 @@ POST /api/user/profile
 
 Request Body:
   name:           string, optional
-  mobile_number:  string, optional
+  mobile_number:  string, optional,
+                  Philippine mobile (09 + 9 digits;
+                  +639 is accepted and normalized)
   barangay_id:    integer, optional,
                   exists:barangays,id
   profile_photo:  file, optional
@@ -632,6 +641,9 @@ Response 200:
 
 ### C3. Change Password
 ```
+GET /api/user/password/cooldown
+(Protected; returns the remaining cooldown seconds, or 0)
+
 POST /api/user/password
 (Protected)
 
@@ -645,7 +657,10 @@ Request Body:
 Response 200:
 {
     "success": true,
-    "message": "Password changed successfully."
+    "message": "Password changed successfully.",
+    "data": {
+        "retry_after_seconds": 60
+    }
 }
 
 Response 422 (wrong current password):
@@ -653,6 +668,11 @@ Response 422 (wrong current password):
     "success": false,
     "message": "Current password is incorrect."
 }
+
+Each valid password-change submission starts a one-minute cooldown. Submissions
+during that period return HTTP 429 with `data.retry_after_seconds` and a
+`Retry-After` header. The cooldown endpoint is used by clients to resume the
+countdown after reopening the password screen.
 
 Note: For Google accounts with no password set,
 omit current_password field.
@@ -736,6 +756,68 @@ and whenever Firebase issues a new token.
 
 ---
 
+### C7. Notification Preferences
+```
+GET /api/user/notification-preferences
+POST /api/user/notification-preferences
+(Protected)
+```
+
+GET Response 200:
+```json
+{
+    "success": true,
+    "data": {
+        "booking_updates": true,
+        "messages": true,
+        "promotions": false,
+        "push": true,
+        "email": true
+    }
+}
+```
+
+POST accepts any subset of these boolean fields and returns the saved values:
+```json
+{
+    "booking_updates": false,
+    "messages": true,
+    "promotions": false,
+    "push": true,
+    "email": false
+}
+```
+
+Category preferences control future in-app and push notifications. `push`
+globally gates push delivery. `email` controls booking-update emails only;
+message notifications are delivered in-app and by push, never by email.
+Security and transactional account emails are not controlled by these settings.
+Booking-update emails are queued and require a configured mail transport and
+running queue worker to be delivered.
+
+### Account Deletion Request
+```
+GET /api/user/delete-account
+POST /api/user/delete-account
+DELETE /api/user/delete-account
+(Protected)
+```
+
+GET returns the authenticated user's request timestamp, or `null` when there
+is no pending request. POST submits an idempotent request for admin review;
+the account is not deleted immediately. DELETE cancels a pending request.
+
+```json
+{
+    "success": true,
+    "data": {
+        "deletion_requested_at": "2026-10-14T02:00:00+00:00"
+    }
+}
+```
+
+---
+
 ## SECTION D: WORKER FEATURES
 
 ---
@@ -784,7 +866,8 @@ Response 200:
                     "average_rating": 4.80,
                     "total_reviews": 23,
                     "trust_tier": "verified",
-                    "verification_status": "approved"
+                    "verification_status": "approved",
+                    "availability_status": "available"
                 },
                 "category": {
                     "id": 1,
@@ -911,6 +994,7 @@ Response 200:
         "trust_tier": "verified",
         "verification_status": "approved",
         "availability_status": "available",
+        "is_online": true,
         "average_rating": 4.80,
         "total_reviews": 23,
         "completed_jobs": 45,
@@ -927,12 +1011,23 @@ Response 200:
                 "rate_amount": 300.00,
                 "rate_type": "daily",
                 "rate_display": "₱300.00/day",
-                "is_available": true
+                "is_available": true,
+                "is_active": true,
+                "images": [
+                    {
+                        "id": 21,
+                        "image_url": "...",
+                        "thumbnail_url": "...",
+                        "display_order": 0
+                    }
+                ]
             }
         ],
         "reviews": [
             {
+                "rated_by_user_id": 12,
                 "rated_by_name": "Ana Cruz",
+                "reviewer_avatar_url": "https://example.com/ana.jpg",
                 "score": 5,
                 "comment": "Very professional!",
                 "created_at": "2026-08-01T..."
@@ -941,6 +1036,21 @@ Response 200:
     }
 }
 ```
+`is_online` is true when the worker sent a presence heartbeat within the last
+five minutes; it is independent of the worker's availability and trust tier.
+
+---
+
+### D3a. Get Client Profile (Worker)
+```
+GET /api/clients/{clientId}
+(Protected, Worker only; client must have a booking with the signed-in worker)
+```
+
+The `data.client` response includes `average_rating`, `rating_count`, and
+`ratings[]` for ratings the client received from workers. Each rating contains
+the reviewer's worker-profile ID, name, photo URL, score, comment, and date.
+`average_rating` is `null` when the client has not received any worker ratings.
 
 ---
 
@@ -951,8 +1061,10 @@ POST /api/worker/verification/submit
 multipart/form-data)
 
 Request Body:
-  government_id:         file, required
-                         (jpeg/png, max 5MB)
+  government_id_front:   file, required
+                         (front of government ID, jpeg/png, max 5MB)
+  government_id_back:    file, required
+                         (back of government ID, jpeg/png, max 5MB)
   barangay_certificate:  file, required
                          (jpeg/png, max 5MB)
   selfie_with_id:        file, required
@@ -979,6 +1091,17 @@ Response 422 (already pending/approved):
 }
 ```
 
+### D3a. Get Authenticated Worker's Own Profile
+```
+GET /api/worker/profile
+(Protected, Worker only)
+
+Response 200 uses the same worker detail fields as D3, wrapped in
+`data.worker`. The profile is resolved through the authenticated user's
+worker-profile relationship, avoiding ambiguity between user IDs and
+worker-profile IDs.
+```
+
 ---
 
 ### D5. Get Verification Status
@@ -997,7 +1120,11 @@ Response 200:
             Please resubmit.",
         "documents": [
             {
-                "type": "government_id",
+                "type": "government_id_front",
+                "status": "approved"
+            },
+            {
+                "type": "government_id_back",
                 "status": "approved"
             },
             {
@@ -1023,14 +1150,22 @@ multipart/form-data)
 
 Request Body:
   bio:              string, optional,
-                    max:500
+                    max:1000
   availability_status: string, optional,
                     in:available,busy,offline
   category_ids:     array of integers,
-                    optional
+                    optional; service category IDs
+  sync_categories:  boolean, optional,
+                    set to true to explicitly sync categories
+                    (an omitted category_ids array clears all categories)
+  sync_portfolio_photos: boolean, optional,
+                    set to true to apply photo removals
+  keep_portfolio_photo_ids: array of integers, optional,
+                    IDs of existing photos to retain; scoped to the
+                    authenticated worker profile
   portfolio_photos: file[], optional
-                    (multiple files)
-                    (jpeg/png, max 2MB each)
+                    (multiple image files, max 5MB each)
+                    at most six retained + uploaded photos total
 
 Response 200:
 {
@@ -1040,7 +1175,10 @@ Response 200:
         "worker_profile": {
             "bio": "...",
             "availability_status": "available",
-            "categories": [...]
+            "categories": [{"id": 1, "name": "Electrical"}],
+            "portfolio_photos": [
+                {"id": 12, "url": "https://example.com/storage/worker-portfolios/1/photo.jpg", "display_order": 0}
+            ]
         }
     }
 }
@@ -1943,6 +2081,26 @@ Side Effects:
   WebSocket broadcast to receiver:
   Channel: private-booking.{bookingId}
   Event: NewMessage
+```
+
+---
+
+### I4. Admin Chat Logs by Participants
+```
+GET /api/admin/chat-logs
+(Admin only)
+
+Returns one conversation per unique client-worker pair, combining messages
+across their bookings. Supports optional `search` by either participant's
+name or email and paginates the conversation list.
+
+GET /api/admin/chat-logs/conversations/{clientId}/{workerId}
+(Admin only)
+
+Returns the selected pair's combined, chronological message history. Each
+message includes its booking code. This read-only endpoint does not mark
+messages as read. The legacy GET /api/admin/chat-logs/{bookingId} route remains
+available for booking-specific history.
   Push notification to receiver:
   "New message from [sender name]"
 ```
@@ -2028,6 +2186,20 @@ All admin routes require:
 
 ---
 
+### Admin Notifications
+
+Admin notifications are shared across admin accounts. Read state is per-admin. Results use cursor pagination so the inbox can grow without loading the complete history. Only the Super Admin may delete notifications; clearing the inbox does not delete Audit Logs.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/api/admin/notifications?per_page=20&cursor={cursor}` | List notifications (1-50 per page), unread count, and next cursor |
+| POST | `/api/admin/notifications/{id}/read` | Mark one notification as read for the current admin |
+| POST | `/api/admin/notifications/read-all` | Mark all notifications as read for the current admin |
+| DELETE | `/api/admin/notifications/{id}` | Delete one notification (Super Admin only) |
+| DELETE | `/api/admin/notifications` | Delete all notifications for every admin (Super Admin only) |
+
+Notification events include new user registrations, worker job posts, worker verification submissions, user reports, blocked attempts to change the Super Admin account, and five failed sign-ins from one IP address within 15 minutes. Each event carries an internal admin-panel destination where a detail page is available.
+
 ### K1. Admin Dashboard Stats
 ```
 GET /api/admin/dashboard
@@ -2091,22 +2263,31 @@ Response 200:
                 "documents": [
                     {
                         "id": 1,
-                        "type": "government_id",
+                        "type": "government_id_front",
                         "file_url": "http://...
                             storage/
                             verifications/
-                            10/gov_id.jpg",
+                            10/government_id_front.jpg",
                         "status": "pending"
                     },
                     {
                         "id": 2,
+                        "type": "government_id_back",
+                        "file_url": "http://...
+                            storage/
+                            verifications/
+                            10/government_id_back.jpg",
+                        "status": "pending"
+                    },
+                    {
+                        "id": 3,
                         "type":
                             "barangay_certificate",
                         "file_url": "...",
                         "status": "pending"
                     },
                     {
-                        "id": 3,
+                        "id": 4,
                         "type": "selfie_with_id",
                         "file_url": "...",
                         "status": "pending"
@@ -2198,8 +2379,9 @@ Response 200:
 
 Side Effects:
   Updates trust_tier in worker_profiles
-  If revoked: job posts hidden from feed,
-              user cannot log in
+  Job posts remain visible in client feeds regardless of trust tier;
+  the client app warns before booking workers not marked verified/trusted.
+  If revoked: user cannot log in
   Push notification to worker
   Logged in admin_audit_logs
 ```
@@ -2261,13 +2443,69 @@ Response 200:
         "barangay": "Calanggaman",
         "is_active": true,
         "created_at": "...",
-        "last_login_at": "...",
-        "total_bookings": 12,
-        "completed_bookings": 10,
-        "reports_filed": 1,
-        "reports_received": 0,
-        "worker_profile": null
-        // full worker_profile if worker
+        "email_verified_at": "...",
+        "last_seen_at": "...",
+        "two_factor_enabled": true,
+        "notification_preferences": {
+            "booking_updates": true,
+            "messages": true,
+            "promotions": false,
+            "push": true,
+            "email": true
+        },
+        "worker_profile": null,
+        "activity": {
+            "bookings": {
+                "total": 12,
+                "by_status": { "completed": 10, "cancelled": 2 },
+                "pagination": { "current_page": 1, "per_page": 10, "total": 12, "last_page": 2 },
+                "recent": ["first 10 bookings"]
+            },
+            "reviews_received_count": 2,
+            "reviews_given_count": 10,
+            "reviews_received_pagination": { "current_page": 1, "per_page": 10, "total": 2, "last_page": 1 },
+            "reviews_given_pagination": { "current_page": 1, "per_page": 10, "total": 10, "last_page": 1 },
+            "recent_reviews_received": ["first 10 received reviews"],
+            "recent_reviews_given": ["first 10 given reviews"]
+        }
+    }
+}
+
+For workers, `worker_profile` includes biography, verification and trust
+status, availability, rating and completed-job totals, service categories,
+and all job posts with rate, availability, status, and listing image URLs.
+Verification documents are not included. Worker and client activity also
+includes booking summaries and only the first page (10 records) of bookings,
+received reviews, and given reviews. Use the paginated activity endpoints to
+retrieve additional pages.
+
+The `super_admin` role has the same admin-panel access as `admin`. The
+designated super-admin account cannot be updated, suspended, or deleted by a
+regular admin, and user-management endpoints do not allow assigning the
+`super_admin` role.
+```
+
+### K6a. Get a User Activity Page (Admin)
+```
+GET /api/admin/users/{userId}/activity/{type}
+(Admin only; client and worker accounts only)
+
+Types: bookings, reviews-received, reviews-given
+Query Parameters:
+  page:     integer, defaults to 1
+  per_page: integer, defaults to 10, maximum 50
+
+Response 200:
+{
+    "success": true,
+    "data": {
+        "items": ["activity records for this page"],
+        "pagination": {
+            "current_page": 2,
+            "per_page": 10,
+            "total": 23,
+            "last_page": 3
+        }
     }
 }
 ```
@@ -2392,6 +2630,71 @@ Response 200:
 
 ---
 
+### Admin Create Booking for a Client
+```
+POST /api/admin/bookings
+(Admin only)
+
+Request Body:
+{
+    "client_id": 12,
+    "worker_id": 34,
+    "job_post_id": 56,
+    "service_category_id": 2,
+    "scheduled_at": "2026-10-20T09:00:00+08:00",
+    "notes": "Please call before arriving"
+}
+
+Response 201:
+{
+    "success": true,
+    "message": "Booking created for client.",
+    "data": {
+        "id": 1,
+        "booking_code": "HB-2026-00001",
+        "status": "pending",
+        "scheduled_at": "2026-10-20T01:00:00+00:00"
+    }
+}
+
+Side Effects:
+  job_post_id must be an active post owned by the selected worker and match the service category
+  Creates a pending booking linked to the job post; the worker must still accept or decline it
+  Sends in-app and push notifications to both client and worker
+  Logged in admin_audit_logs
+```
+
+---
+
+### Admin Reschedule Pending Booking
+```
+POST /api/admin/bookings/{bookingId}/reschedule
+(Admin only; pending bookings only)
+
+Request Body:
+{
+    "scheduled_at": "2026-10-22T10:00:00+08:00"
+}
+
+Response 200:
+{
+    "success": true,
+    "message": "Booking rescheduled.",
+    "data": {
+        "id": 1,
+        "booking_code": "HB-2026-00001",
+        "status": "pending",
+        "scheduled_at": "2026-10-22T02:00:00+00:00"
+    }
+}
+
+Side Effects:
+  Sends in-app and push notifications to both client and worker
+  Logged in admin_audit_logs with the previous and updated schedule
+```
+
+---
+
 ### K11. Force Cancel Booking (Admin)
 ```
 POST /api/admin/bookings/{bookingId}/cancel
@@ -2463,6 +2766,29 @@ Response 200:
 
 ---
 
+### Admin Submit Report on Behalf of a User
+```
+POST /api/admin/reports
+(Admin only; accepts multipart/form-data)
+
+Fields:
+  booking_id: required integer
+  reporter_role: required "client" or "worker"
+  reason: required active report reason for reporter_role
+  description: required string, maximum 2000 characters
+  evidence_photos[]: optional, up to 3 images (JPG/PNG/WebP, max 5 MB each)
+
+The selected booking participant is the report's represented reporter; the
+other participant is the reported user. The admin ID is stored separately as
+the submitter, and the action is recorded in Audit Logs. Both the represented
+user and the reported user receive in-app notifications (and push notifications
+when available).
+
+Response: 201 Created
+```
+
+---
+
 ### K13. Resolve Report (Admin)
 ```
 POST /api/admin/reports/{reportId}/resolve
@@ -2507,6 +2833,9 @@ GET /api/admin/ratings
 (Admin only)
 
 Query Parameters:
+  rated_user_id: integer, optional (filter by the user receiving reviews)
+  worker_id: integer, optional (legacy worker recipient filter)
+  client_id: integer, optional (legacy reviewer filter)
   score:     integer (1-5), optional
   direction: string (client_to_worker/
              worker_to_client), optional
@@ -2520,18 +2849,40 @@ Response 200:
         "ratings": [
             {
                 "id": 1,
-                "rated_by_name": "Ana Cruz",
-                "rated_user_name":
-                    "Pedro Alonzo",
-                "booking_code":
-                    "HB-2026-00001",
+                "rated_by": { "id": 2, "name": "Ana Cruz" },
+                "rated_user": { "id": 3, "name": "Pedro Alonzo" },
+                "booking": { "id": 1, "booking_code": "HB-2026-00001" },
                 "score": 5,
                 "comment": "Very professional!",
                 "created_at": "..."
             }
-        ]
+        ],
+        "pagination": {
+            "current_page": 1,
+            "per_page": 15,
+            "total": 1,
+            "last_page": 1
+        }
     }
 }
+```
+
+---
+
+### K14a. List Review Recipients (Admin)
+```
+GET /api/admin/ratings/users
+(Admin only)
+
+Query Parameters:
+  role:   client or worker, optional
+  search: matches user name or email, optional
+  page:   integer, optional
+  sort_by: name or average_rating, optional (default: average_rating)
+  sort_direction: asc or desc, optional (default: desc)
+
+Returns paginated users except admins, including users with no reviews. Users
+without reviews have a review count of 0 and an average rating of 0.
 ```
 
 ---
@@ -2561,18 +2912,25 @@ Side Effects:
 
 ---
 
-### K16. Get Audit Logs (Admin)
+### K16. Get and Manage Audit Logs (Admin)
 ```
 GET /api/admin/audit-logs
 (Admin only)
+DELETE /api/admin/audit-logs/{id}
+DELETE /api/admin/audit-logs
+(Super Admin only for deletion)
 
 Query Parameters:
   admin_id:    integer, optional
   action:      string, optional
   target_type: string, optional
+  category:    admin_activity | security, optional
+  outcome:     success | failure, optional
+  admin_name:  actor name or email, optional
+  ip_address:  partial IP address, optional
   date_from:   date, optional
   date_to:     date, optional
-  page:        integer
+  page:        integer, optional
 
 Response 200:
 {
@@ -2581,19 +2939,19 @@ Response 200:
         "logs": [
             {
                 "id": 1,
+                "category": "security",
+                "outcome": "failure",
                 "admin": {
-                    "id": 5,
-                    "name": "Admin User"
+                    "id": null,
+                    "name": "unknown@example.com",
+                    "email": "unknown@example.com"
                 },
-                "action":
-                    "approved_worker_verification",
-                "target_type": "WorkerProfile",
-                "target_id": 3,
-                "details": {
-                    "worker_name":
-                        "Liza Dimaano"
-                },
+                "action": "login",
+                "target_type": null,
+                "target_id": null,
+                "details": {"email": "unknown@example.com", "reason": "invalid_credentials"},
                 "ip_address": "192.168.1.5",
+                "user_agent": "...",
                 "created_at": "..."
             }
         ],
@@ -2601,6 +2959,12 @@ Response 200:
     }
 }
 ```
+
+Security events include password and Google login/OTP outcomes, password change/reset, user suspension/reactivation, role or password changes made by administrators, and denied attempts to change or delete the protected super-admin account. Passwords, OTP values, reset tokens, Google ID tokens, and access tokens are never recorded.
+
+Audit and security logs are not automatically deleted. Only the Super Admin may permanently delete an individual log or all logs.
+
+Successful legacy admin activity records are backfilled with `outcome: success`. Historical IP addresses and field-level before/after values are not reconstructable when they were not captured originally; complete request metadata and change details are recorded for new actions.
 
 ---
 

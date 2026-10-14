@@ -2,9 +2,12 @@
 
 namespace App\Services\Notification;
 
+use App\Mail\NotificationEmail;
 use App\Models\DeviceToken;
 use App\Models\HanapbuhayNotification;
 use App\Models\User;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Kreait\Firebase\Contract\Messaging;
 use Kreait\Firebase\Exception\MessagingException;
 use Kreait\Firebase\Messaging\CloudMessage;
@@ -12,14 +15,16 @@ use Kreait\Firebase\Messaging\Notification;
 
 class NotificationService
 {
-    public function __construct(private readonly Messaging $messaging) {}
-
     /**
-     * Create an in-app notification record for the given user.
+     * Create an in-app notification record and, for booking updates, queue an email.
      */
-    public function notify(User $user, string $title, string $body, string $type, array $data = []): HanapbuhayNotification
+    public function notify(User $user, string $title, string $body, string $type, array $data = []): ?HanapbuhayNotification
     {
-        return HanapbuhayNotification::create([
+        if (!$this->categoryEnabled($user, $type)) {
+            return null;
+        }
+
+        $notification = HanapbuhayNotification::create([
             'user_id' => $user->id,
             'title'   => $title,
             'body'    => $body,
@@ -27,14 +32,34 @@ class NotificationService
             'data'    => $data ?: null,
             'is_read' => false,
         ]);
+
+        if ($this->isBookingUpdate($type) && ($user->notify_email ?? true) && $user->email) {
+            try {
+                Mail::to($user->email)->queue(
+                    (new NotificationEmail($title, $body))->afterCommit(),
+                );
+            } catch (\Throwable $exception) {
+                Log::error('Failed to queue booking notification email', [
+                    'user_id' => $user->id,
+                    'type' => $type,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
+        }
+
+        return $notification;
     }
 
     /**
-     * Send a Firebase push notification to all of a user's registered devices.
-     * Also creates an in-app notification record.
+     * Send a Firebase push notification to all opted-in registered devices.
      */
     public function sendPush(User $user, string $title, string $body = '', array $data = []): void
     {
+        $type = (string) ($data['type'] ?? '');
+        if (!($user->notify_push ?? true) || !$this->categoryEnabled($user, $type)) {
+            return;
+        }
+
         $tokens = DeviceToken::where('user_id', $user->id)->get();
 
         if ($tokens->isEmpty()) {
@@ -43,6 +68,16 @@ class NotificationService
 
         $notification = Notification::create($title, $body);
 
+        try {
+            $messaging = app(Messaging::class);
+        } catch (\Throwable $exception) {
+            Log::warning('Firebase messaging is unavailable', [
+                'user_id' => $user->id,
+                'error' => $exception->getMessage(),
+            ]);
+            return;
+        }
+
         foreach ($tokens as $token) {
             try {
                 $message = CloudMessage::new()
@@ -50,10 +85,43 @@ class NotificationService
                     ->withNotification($notification)
                     ->withData($data);
 
-                $this->messaging->send($message);
-            } catch (MessagingException) {
+                $messaging->send($message);
+            } catch (MessagingException $exception) {
+                Log::warning('Firebase push delivery failed', [
+                    'user_id' => $user->id,
+                    'error' => $exception->getMessage(),
+                ]);
                 $token->delete();
+            } catch (\Throwable $exception) {
+                Log::error('Unexpected Firebase push delivery error', [
+                    'user_id' => $user->id,
+                    'error' => $exception->getMessage(),
+                ]);
             }
         }
+    }
+
+    private function categoryEnabled(User $user, string $type): bool
+    {
+        if ($this->isBookingUpdate($type)) {
+            return (bool) ($user->notify_booking_updates ?? true);
+        }
+
+        if (in_array($type, ['new_message', 'new_chat_message', 'message'], true)) {
+            return (bool) ($user->notify_messages ?? true);
+        }
+
+        if (str_contains($type, 'promotion') || str_contains($type, 'announcement')) {
+            return (bool) ($user->notify_promotions ?? false);
+        }
+
+        return true;
+    }
+
+    private function isBookingUpdate(string $type): bool
+    {
+        return str_starts_with($type, 'booking_')
+            || str_starts_with($type, 'tracking_')
+            || in_array($type, ['new_rating', 'new_review'], true);
     }
 }

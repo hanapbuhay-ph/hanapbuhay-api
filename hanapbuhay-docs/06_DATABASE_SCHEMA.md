@@ -776,6 +776,8 @@ Schema::create('verification_documents', function (Blueprint $table) {
           ->cascadeOnDelete();
     $table->enum('document_type', [
         'government_id',
+        'government_id_front',
+        'government_id_back',
         'barangay_certificate',
         'selfie_with_id',
         'skill_certificate'
@@ -1034,31 +1036,28 @@ One user can have multiple device tokens
 
 ---
 
-## TABLE 16: admin_audit_logs **Status: ⏳ Pending**
+## TABLE 16: admin_audit_logs **Status: ✅ Exists**
 
 ```php
 Schema::create('admin_audit_logs', function (Blueprint $table) {
     $table->id();
-    $table->foreignId('admin_id')
-          ->constrained('users')
-          ->cascadeOnDelete();
+    $table->foreignId('admin_id')->nullable()
+          ->constrained('users')->nullOnDelete();
+    $table->string('actor_name')->nullable();
+    $table->string('actor_email')->nullable();
+    $table->string('category')->default('admin_activity');
+    $table->string('outcome')->nullable();
     $table->string('action');
-    // e.g. 'approved_worker_verification'
-    // e.g. 'suspended_user'
-    // e.g. 'resolved_report'
-    // e.g. 'force_cancelled_booking'
     $table->string('target_type')->nullable();
-    // e.g. 'WorkerProfile', 'User',
-    //      'Booking', 'Report', 'JobPost'
-    $table->unsignedBigInteger('target_id')
-          ->nullable();
+    $table->unsignedBigInteger('target_id')->nullable();
     $table->json('details')->nullable();
-    // Additional context for the action
     $table->string('ip_address')->nullable();
+    $table->string('user_agent', 1024)->nullable();
     $table->timestamps();
-    // No softDeletes — audit logs are permanent
 });
 ```
+
+Audit records are not automatically expired. Deletion endpoints are restricted to the Super Admin. Anonymous authentication attempts are recorded with an optional actor email snapshot and no linked user.
 
 ---
 

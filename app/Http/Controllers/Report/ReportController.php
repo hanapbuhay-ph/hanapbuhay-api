@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Report\CreateReportRequest;
 use App\Models\Booking;
 use App\Models\Report;
+use App\Models\User;
 use App\Services\Report\ReportService;
+use App\Services\Media\MediaStorageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -27,20 +29,20 @@ class ReportController extends Controller
                 $request->file('evidence_photos', []),
                 $request->user()
             );
-        } catch (\RuntimeException $e) {
+        } catch (RuntimeException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
 
         return response()->json([
             'success' => true,
             'message' => 'Report submitted successfully.',
-            'data'    => [
+            'data' => [
                 'report' => [
-                    'id'          => $report->id,
-                    'booking_id'  => $report->booking_id,
-                    'reason'      => $report->reason,
+                    'id' => $report->id,
+                    'booking_id' => $report->booking_id,
+                    'reason' => $report->reason,
                     'description' => $report->description,
-                    'status'      => $report->status,
+                    'status' => $report->status,
                 ],
             ],
         ], 201);
@@ -48,28 +50,45 @@ class ReportController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $paginator = $this->service->listForUser($request->user());
+        $view = $request->query('view', 'all');
+        abort_unless(in_array($view, ['all', 'submitted', 'received'], true), 422, 'Invalid report view.');
+        $paginator = $this->service->listForUser($request->user(), $view);
 
         $reports = $paginator->getCollection()->map(fn (Report $r) => [
-            'id'            => $r->id,
-            'booking_id'    => $r->booking_id,
-            'booking_code'  => $r->booking->booking_code,
-            'reported_user' => $r->reportedUser->name,
-            'reason'        => $r->reason,
-            'status'        => $r->status,
-            'created_at'    => $r->created_at->toISOString(),
+            'id' => $r->id,
+            'booking_id' => $r->booking_id,
+            'booking_code' => $r->booking->booking_code,
+            'reported_user' => $this->userSummary($r->reportedUser),
+            'reporter' => $this->userSummary($r->reporter),
+            'submitted_by_admin' => $r->submittedByAdmin
+                ? $this->userSummary($r->submittedByAdmin)
+                : null,
+            'reason' => $r->reason,
+            'reason_label' => $r->reportReason?->label ?? $r->reason,
+            'description' => $r->description,
+            'evidence_paths' => collect($r->evidence_paths ?? [])
+                ->map(fn (string $path): ?string => app(MediaStorageService::class)->privateUrl($path))
+                ->values()
+                ->all(),
+            'status' => $r->status,
+            'admin_remarks' => $r->admin_remarks,
+            'resolution_action' => $r->resolution_action,
+            'resolved_by' => $r->resolvedBy?->name,
+            'resolved_at' => $r->resolved_at?->toISOString(),
+            'created_at' => $r->created_at->toISOString(),
+            'updated_at' => $r->updated_at?->toISOString(),
         ]);
 
         return response()->json([
             'success' => true,
             'message' => 'Reports retrieved.',
-            'data'    => [
-                'reports'    => $reports,
+            'data' => [
+                'reports' => $reports,
                 'pagination' => [
                     'current_page' => $paginator->currentPage(),
-                    'per_page'     => $paginator->perPage(),
-                    'total'        => $paginator->total(),
-                    'last_page'    => $paginator->lastPage(),
+                    'per_page' => $paginator->perPage(),
+                    'total' => $paginator->total(),
+                    'last_page' => $paginator->lastPage(),
                 ],
             ],
         ]);
@@ -84,20 +103,48 @@ class ReportController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Report retrieved.',
-            'data'    => [
+            'data' => [
                 'report' => [
-                    'id'             => $report->id,
-                    'booking_id'     => $report->booking_id,
-                    'booking_code'   => $report->booking->booking_code,
-                    'reported_user'  => $report->reportedUser->name,
-                    'reason'         => $report->reason,
-                    'description'    => $report->description,
-                    'evidence_paths' => $report->evidence_paths,
-                    'status'         => $report->status,
-                    'admin_remarks'  => $report->admin_remarks,
-                    'created_at'     => $report->created_at->toISOString(),
+                    'id' => $report->id,
+                    'booking_id' => $report->booking_id,
+                    'booking_code' => $report->booking->booking_code,
+                    'reported_user' => $this->userSummary($report->reportedUser),
+                    'reporter' => $this->userSummary($report->reporter),
+                    'submitted_by_admin' => $report->submittedByAdmin
+                        ? $this->userSummary($report->submittedByAdmin)
+                        : null,
+                    'reason' => $report->reason,
+                    'reason_label' => $report->reportReason?->label ?? $report->reason,
+                    'description' => $report->description,
+                    'evidence_paths' => collect($report->evidence_paths ?? [])
+                        ->map(fn (string $path): ?string => app(MediaStorageService::class)->privateUrl($path))
+                        ->values()
+                        ->all(),
+                    'status' => $report->status,
+                    'admin_remarks' => $report->admin_remarks,
+                    'resolution_action' => $report->resolution_action,
+                    'resolved_by' => $report->resolvedBy?->name,
+                    'resolved_at' => $report->resolved_at?->toISOString(),
+                    'created_at' => $report->created_at->toISOString(),
+                    'updated_at' => $report->updated_at?->toISOString(),
                 ],
             ],
         ]);
+    }
+
+    private function userSummary(?User $user): ?array
+    {
+        if ($user === null) {
+            return null;
+        }
+
+        $profilePhotoUrl = app(MediaStorageService::class)->publicUrl($user->profile_photo_path);
+
+        return [
+            'id' => $user->id,
+            'name' => $user->name,
+            'profile_photo_url' => $profilePhotoUrl,
+            'profile_photo_path' => $profilePhotoUrl,
+        ];
     }
 }

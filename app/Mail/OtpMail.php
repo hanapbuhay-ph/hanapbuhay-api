@@ -2,13 +2,15 @@
 
 namespace App\Mail;
 
+use App\Models\OtpCode;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
-class OtpMail extends Mailable
+class OtpMail extends Mailable implements ShouldQueue
 {
     use Queueable, SerializesModels;
 
@@ -29,6 +31,7 @@ class OtpMail extends Mailable
             with: [
                 'code'    => $this->code,
                 'subject' => $this->subjectLine,
+                'expiryMinutes' => OtpCode::VALIDITY_MINUTES,
             ],
         );
     }

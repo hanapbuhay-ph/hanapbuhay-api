@@ -113,6 +113,8 @@ it('approving a verification automatically sets trust_tier to verified', functio
     ]);
 
     $this->mock(NotificationService::class)
+        ->shouldReceive('notify')
+        ->once()
         ->shouldReceive('sendPush')->once();
 
     $this->actingAs($admin)
@@ -141,7 +143,11 @@ it('rejecting a verification does NOT set trust_tier', function () {
         'status'            => 'pending',
     ]);
 
-    $this->mock(NotificationService::class)->shouldReceive('sendPush')->once();
+    $this->mock(NotificationService::class)
+        ->shouldReceive('notify')
+        ->once()
+        ->shouldReceive('sendPush')
+        ->once();
 
     $this->actingAs($admin)
         ->postJson("/api/admin/verifications/{$profile->id}/review", [

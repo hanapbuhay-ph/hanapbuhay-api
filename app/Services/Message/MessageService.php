@@ -6,16 +6,19 @@ use App\Events\NewMessage;
 use App\Models\Booking;
 use App\Models\Message;
 use App\Models\User;
+use App\Services\Notification\NotificationService;
+use App\Services\Media\MediaStorageService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Throwable;
 
 class MessageService
 {
+    public function __construct(private readonly NotificationService $notifications) {}
+
     /**
      * GET /api/messages — chat inbox.
      * Returns one row per booking that the user has exchanged messages on,
@@ -34,8 +37,16 @@ class MessageService
         $conversations = [];
 
         foreach ($bookingIds as $bookingId) {
-            $booking = Booking::with(['client:id,name,profile_photo_path', 'worker:id,name,profile_photo_path'])
+            $booking = Booking::with([
+                'client:id,name,role,profile_photo_path,last_seen_at',
+                'worker:id,name,role,profile_photo_path,last_seen_at',
+                'worker.workerProfile:id,user_id,availability_status',
+            ])
                 ->find($bookingId);
+
+            if ($booking === null) {
+                continue;
+            }
 
             $lastMessage = Message::where('booking_id', $bookingId)
                 ->latest()
@@ -49,21 +60,45 @@ class MessageService
             // Determine the "other party" from this user's perspective
             $otherParty = $user->id === $booking->client_id ? $booking->worker : $booking->client;
 
-            $conversations[] = [
+            $conversation = [
                 'booking_id'      => $booking->id,
                 'booking_code'    => $booking->booking_code,
                 'booking_status'  => $booking->status,
                 'other_party'     => [
                     'id'                => $otherParty?->id,
                     'name'              => $otherParty?->name,
+                    'role'              => $otherParty?->role,
+                    'is_online'         => $otherParty?->last_seen_at?->gte(now()->subMinutes(5)) ?? false,
+                    'availability_status' => $otherParty?->workerProfile?->availability_status,
                     'profile_photo_url' => $otherParty?->profile_photo_path
-                        ? asset('storage/' . $otherParty->profile_photo_path)
+                        ? app(MediaStorageService::class)->publicUrl($otherParty->profile_photo_path)
                         : null,
                 ],
                 'last_message'    => $lastMessage?->content,
                 'last_message_at' => $lastMessage?->created_at?->toIso8601String(),
                 'unread_count'    => $unreadCount,
             ];
+
+            $otherPartyId = $otherParty?->id;
+            if ($otherPartyId === null) {
+                continue;
+            }
+
+            $existingIndex = collect($conversations)->search(
+                fn (array $existing) => ($existing['other_party']['id'] ?? null) === $otherPartyId,
+            );
+
+            if ($existingIndex === false) {
+                $conversations[] = $conversation;
+                continue;
+            }
+
+            $conversation['unread_count'] += $conversations[$existingIndex]['unread_count'] ?? 0;
+            $existingTime = $conversations[$existingIndex]['last_message_at'] ?? '';
+            $currentTime = $conversation['last_message_at'] ?? '';
+            if (strcmp($currentTime, $existingTime) > 0) {
+                $conversations[$existingIndex] = $conversation;
+            }
         }
 
         // Sort by last_message_at descending
@@ -126,11 +161,7 @@ class MessageService
             try {
                 $ext            = $attachment->getClientOriginalExtension();
                 $filename       = "messages/{$booking->id}/" . uniqid('msg_', true) . ".{$ext}";
-                $attachmentPath = Storage::disk('public')->putFileAs(
-                    "messages/{$booking->id}",
-                    $attachment,
-                    basename($filename),
-                );
+                $attachmentPath = app(MediaStorageService::class)->storePrivateFile($attachment, $filename);
             } catch (Throwable $e) {
                 Log::error('Message attachment upload failed', [
                     'booking_id' => $booking->id,
@@ -159,6 +190,28 @@ class MessageService
             $content ?? '',
             $message->created_at->toISOString(),
         );
+
+        $receiver = User::find($receiverId);
+        if ($receiver !== null) {
+            $notificationData = [
+                'booking_id' => (string) $booking->id,
+                'conversation_id' => (string) $booking->id,
+                'sender_id' => (string) $sender->id,
+            ];
+            $this->notifications->notify(
+                $receiver,
+                'New Message',
+                $content ?: 'You received a new attachment.',
+                'new_chat_message',
+                $notificationData,
+            );
+            $this->notifications->sendPush(
+                $receiver,
+                'New Message',
+                $content ?: 'You received a new attachment.',
+                $notificationData + ['type' => 'new_chat_message'],
+            );
+        }
 
         return $message;
     }
