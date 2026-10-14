@@ -208,7 +208,8 @@ it('worker can reorder images and order is persisted', function () {
     $this->actingAs($worker)
         ->putJson("/api/worker/posts/{$post->id}/images/order", ['image_ids' => $reversed])
         ->assertStatus(200)
-        ->assertJsonPath('success', true);
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('message', 'Images reordered.');
 
     $newOrder = JobPostImage::where('job_post_id', $post->id)->orderBy('display_order')->pluck('id')->all();
     expect($newOrder)->toBe($reversed);

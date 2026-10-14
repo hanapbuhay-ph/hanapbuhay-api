@@ -105,6 +105,7 @@ class JobPostImageController extends Controller
 
         return response()->json([
             'success' => true,
+            'message' => 'Images reordered.',
             'data' => [
                 'images' => $this->service->formatImages($post->images),
             ],
