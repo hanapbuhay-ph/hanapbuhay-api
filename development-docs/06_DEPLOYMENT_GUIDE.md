@@ -5,8 +5,7 @@
 
 > Covers: local Laragon setup (already detailed in
 > 01_LOCAL_SETUP_GUIDE.md), connecting teammates to
-> your local backend, and the future move to Railway
-> for a real production deployment.
+> your local backend, and a Render-based free pilot.
 
 ---
 
@@ -145,7 +144,82 @@ tunnel fails to start.
 
 ---
 
-## Future: Railway Deployment (When Ready for Live Demo)
+## Render Pilot Deployment (Free-Tier Demo)
+
+The current pilot plan keeps the existing MySQL database and uses:
+
+- **Render Free Web Service** for the Laravel API. The service sleeps when
+  idle, and uploaded files on its local filesystem are not persistent.
+- **Aiven MySQL** for the hosted database.
+- **Cloudinary** for persistent profile and job-post images.
+- **Ably Pusher Adapter** as the hosted alternative to self-managed Soketi.
+- **Render Static Site** for the React admin panel.
+
+These free/demo services have quotas and availability limits. A sleeping API
+can delay requests, and queue processing stops while the Render service sleeps.
+OTP email delivery also needs a provider/transport that works from Render;
+Render Free blocks outbound SMTP ports 25, 465, and 587. Test these behaviors
+before inviting users.
+
+### Container deployment
+
+The repository includes a `Dockerfile` and `docker/` configuration for PHP
+8.4-FPM, Nginx, Supervisor, and a Laravel database queue worker. PHP 8.4 is
+used because the current MySQL TLS config uses the `Pdo\Mysql` constants. In Render:
+
+1. Create a **Web Service** from the `hanapbuhay-api` GitHub repository and
+   deploy with Docker.
+2. Select the **Free** instance type and confirm the displayed price before
+   creating the service.
+3. Set production environment variables in the Render dashboard; never commit
+   `.env`, application keys, database passwords, or provider secrets.
+4. Add the Aiven CA certificate as a Render secret file and set
+   `MYSQL_ATTR_SSL_CA` to its in-container path (for example,
+   `/etc/secrets/ca.pem`).
+5. Complete the database migration and seed plan before directing clients at
+   the API. Do not assume the deploy automatically migrates the database.
+
+The service listens on port `10000` and uses Laravel's `/up` health endpoint.
+The container starts the web server and queue worker together. Both stop when
+the free web service sleeps; queued work waits until it wakes again.
+
+Configure durable image storage and Ably credentials separately before
+testing endpoints that upload images or broadcast events. Do not put Ably's
+private API secret in either client app.
+
+### Required Render environment settings
+
+Configure values through Render's Environment page (use the actual Aiven
+connection values privately):
+
+```env
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://<render-service>.onrender.com
+DB_CONNECTION=mysql
+DB_HOST=<aiven-host>
+DB_PORT=<aiven-port>
+DB_DATABASE=<aiven-database>
+DB_USERNAME=<aiven-username>
+DB_PASSWORD=<aiven-password>
+MYSQL_ATTR_SSL_CA=/etc/secrets/ca.pem
+QUEUE_CONNECTION=database
+```
+
+Also configure `APP_KEY`, production mail delivery, Firebase credentials,
+Cloudinary, Ably, and any required Google OAuth settings in Render. Generate
+the Laravel application key locally with `php artisan key:generate --show`
+and paste it directly into Render; do not share or commit it.
+
+### Remaining client configuration
+
+After the API is deployed and critical flows are verified, update the Android
+app's API and image base URLs and the React admin panel's API environment
+setting to use the public HTTPS API URL. Keep development URLs separate from
+release configuration. Test OTP delivery, uploads, push notifications, chat,
+tracking, and admin workflows against the deployed service first.
+
+## Previous Railway Option (Not the Current Free Pilot)
 
 ```
 Railway is the planned host for when a real,
@@ -248,4 +322,3 @@ config/cors.php allows:
 ```
 
 ---
-
