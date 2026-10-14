@@ -233,9 +233,13 @@ QUEUE_CONNECTION=database
 ```
 
 Also configure `APP_KEY`, production mail delivery, Firebase credentials,
-`MEDIA_DISK=cloudinary`, `CLOUDINARY_URL`, Ably, and any required Google OAuth settings in Render. Generate
-the Laravel application key locally with `php artisan key:generate --show`
-and paste it directly into Render; do not share or commit it.
+`MEDIA_DISK=cloudinary`, `CLOUDINARY_URL`, and any required Google OAuth
+settings in Render. For Ably's Pusher-compatible broadcast adapter, set
+`BROADCAST_CONNECTION=ably` and `ABLY_KEY` to the full Ably API key. Keep the
+full key server-side; Android clients use only the Ably key name with Ably's
+Pusher-compatible endpoint. Generate the Laravel application key locally with
+`php artisan key:generate --show` and paste it directly into Render; do not
+share or commit it.
 
 ### Remaining client configuration
 
