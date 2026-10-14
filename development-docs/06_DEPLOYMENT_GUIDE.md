@@ -185,6 +185,10 @@ used because the current MySQL TLS config uses the `Pdo\Mysql` constants. In Ren
    Render Docker Command to `/bin/sh /var/www/html/docker/migrate-and-start.sh`
    for this deployment; after it succeeds, clear the override to use the
    Dockerfile's normal startup command.
+   Seed the initial barangay list separately, once, by temporarily setting the
+   Docker Command to
+   `/bin/sh /var/www/html/docker/seed-barangays-and-start.sh`. The barangay
+   seeder inserts rows directly and must not be run again after it succeeds.
 
 The service listens on port `10000` and uses Laravel's `/up` health endpoint.
 The container starts the web server and queue worker together. Both stop when
