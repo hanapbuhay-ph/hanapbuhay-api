@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\AdminSettingsController;
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\AdminWorkerController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\ReportAnalyticsController;
 use App\Http\Controllers\Admin\VerificationController as AdminVerificationController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Auth\EmailVerificationController;
@@ -260,6 +261,8 @@ Route::middleware(['auth:sanctum', 'active', 'admin'])->prefix('admin')->group(f
 
     // Dashboard stats
     Route::get('dashboard', [DashboardController::class, 'index']);
+    Route::get('report-analytics', [ReportAnalyticsController::class, 'index']);
+    Route::get('report-analytics/exports/{type}', [ReportAnalyticsController::class, 'export']);
 
     // Worker trust tier
     Route::post('workers/{workerProfileId}/trust-tier', [AdminWorkerController::class, 'updateTrustTier']);
