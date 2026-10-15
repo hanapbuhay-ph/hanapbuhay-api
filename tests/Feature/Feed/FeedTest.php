@@ -204,6 +204,46 @@ it('filters by rate_type', function () {
     expect($postIds)->not->toContain($dailyPost->id);
 });
 
+it('filters by multiple categories and rate types', function () {
+    $client = makeFeedClient();
+    [, , $hourlyPost, $category1] = makeWorkerWithPost(['rate_type' => 'hourly']);
+    [, , $dailyPost, $category2] = makeWorkerWithPost(['rate_type' => 'daily']);
+    [, , $unmatchedPost] = makeWorkerWithPost(['rate_type' => 'weekly']);
+
+    $response = $this->actingAs($client)
+        ->getJson("/api/feed?category_ids={$category1->id},{$category2->id}&rate_types=hourly,daily")
+        ->assertOk();
+
+    $postIds = collect($response->json('data.posts'))->pluck('job_post_id');
+    expect($postIds)->toContain($hourlyPost->id);
+    expect($postIds)->toContain($dailyPost->id);
+    expect($postIds)->not->toContain($unmatchedPost->id);
+});
+
+it('searches active listings by worker name, service, title, and description', function () {
+    $client = makeFeedClient();
+    [$worker, , $post, $category] = makeWorkerWithPost([
+        'title' => 'Emergency Pipe Repair',
+        'description' => 'Same-day leak repair service',
+    ]);
+    $worker->update(['name' => 'Pedro Alonzo']);
+
+    [, , $unmatchedPost] = makeWorkerWithPost([
+        'title' => 'Garden Maintenance',
+        'description' => 'Routine lawn care',
+    ]);
+
+    foreach (['pedro', strtolower($category->name), 'emergency pipe', 'leak repair'] as $term) {
+        $response = $this->actingAs($client)
+            ->getJson('/api/feed?search='.urlencode($term))
+            ->assertOk();
+
+        $postIds = collect($response->json('data.posts'))->pluck('job_post_id');
+        expect($postIds)->toContain($post->id);
+        expect($postIds)->not->toContain($unmatchedPost->id);
+    }
+});
+
 it('filters verification=verified returns only workers with trust_tier set', function () {
     $client = makeFeedClient();
 

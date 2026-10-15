@@ -50,16 +50,15 @@ class TrackingController extends Controller
             ? "The client is on the way for booking {$booking->booking_code}."
             : "The worker is on the way for booking {$booking->booking_code}.";
         $this->notifications->notify($recipient, $title, $body, 'tracking_started', ['booking_id' => $booking->id]);
-        $this->notifications->sendPush($recipient, $title, $body, ['booking_id' => (string) $booking->id, 'type' => 'tracking_started']);
 
         LocationTrackingStarted::dispatch($booking->id, $role);
 
         return response()->json([
             'success' => true,
             'message' => 'Tracking started.',
-            'data'    => [
-                'booking_id'         => $booking->id,
-                'role'               => $role,
+            'data' => [
+                'booking_id' => $booking->id,
+                'role' => $role,
                 'is_client_tracking' => $booking->fresh()->is_client_tracking,
                 'is_worker_tracking' => $booking->fresh()->is_worker_tracking,
             ],
@@ -98,31 +97,31 @@ class TrackingController extends Controller
             ], 422);
         }
 
-        $validated   = $request->validated();
-        $latitude    = (float) $validated['latitude'];
-        $longitude   = (float) $validated['longitude'];
-        $recordedAt  = now();
+        $validated = $request->validated();
+        $latitude = (float) $validated['latitude'];
+        $longitude = (float) $validated['longitude'];
+        $recordedAt = now();
 
         LocationUpdated::dispatch($booking->id, $role, $latitude, $longitude, $recordedAt->toISOString());
 
         BookingTracking::create([
-            'booking_id'  => $booking->id,
+            'booking_id' => $booking->id,
             'tracked_role' => $role,
-            'latitude'    => $latitude,
-            'longitude'   => $longitude,
-            'accuracy'    => $validated['accuracy'] ?? null,
+            'latitude' => $latitude,
+            'longitude' => $longitude,
+            'accuracy' => $validated['accuracy'] ?? null,
             'recorded_at' => $recordedAt,
         ]);
 
         return response()->json([
             'success' => true,
             'message' => 'Location updated.',
-            'data'    => [
+            'data' => [
                 'booking_id' => $booking->id,
-                'role'       => $role,
-                'latitude'   => $latitude,
-                'longitude'  => $longitude,
-                'accuracy'   => $validated['accuracy'] ?? null,
+                'role' => $role,
+                'latitude' => $latitude,
+                'longitude' => $longitude,
+                'accuracy' => $validated['accuracy'] ?? null,
             ],
         ]);
     }
@@ -160,16 +159,15 @@ class TrackingController extends Controller
             ? "The client has arrived for booking {$booking->booking_code}."
             : "The worker has arrived for booking {$booking->booking_code}.";
         $this->notifications->notify($recipient, $title, $body, 'tracking_stopped', ['booking_id' => $booking->id]);
-        $this->notifications->sendPush($recipient, $title, $body, ['booking_id' => (string) $booking->id, 'type' => 'tracking_stopped']);
 
         LocationTrackingStopped::dispatch($booking->id, $role);
 
         return response()->json([
             'success' => true,
             'message' => 'Tracking stopped.',
-            'data'    => [
-                'booking_id'         => $booking->id,
-                'role'               => $role,
+            'data' => [
+                'booking_id' => $booking->id,
+                'role' => $role,
                 'is_client_tracking' => $booking->fresh()->is_client_tracking,
                 'is_worker_tracking' => $booking->fresh()->is_worker_tracking,
             ],
@@ -199,17 +197,17 @@ class TrackingController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Tracking state retrieved.',
-            'data'    => [
+            'data' => [
                 'is_client_tracking' => $booking->is_client_tracking,
                 'is_worker_tracking' => $booking->is_worker_tracking,
-                'client_barangay'    => $clientBarangay ? [
-                    'name'      => $clientBarangay->name,
-                    'latitude'  => (float) $clientBarangay->latitude,
+                'client_barangay' => $clientBarangay ? [
+                    'name' => $clientBarangay->name,
+                    'latitude' => (float) $clientBarangay->latitude,
                     'longitude' => (float) $clientBarangay->longitude,
                 ] : null,
-                'worker_barangay'    => $workerBarangay ? [
-                    'name'      => $workerBarangay->name,
-                    'latitude'  => (float) $workerBarangay->latitude,
+                'worker_barangay' => $workerBarangay ? [
+                    'name' => $workerBarangay->name,
+                    'latitude' => (float) $workerBarangay->latitude,
                     'longitude' => (float) $workerBarangay->longitude,
                 ] : null,
                 'last_client_location' => $booking->is_client_tracking ? $latestLocation('client') : null,

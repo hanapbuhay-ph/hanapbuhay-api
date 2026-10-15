@@ -11,16 +11,16 @@ uses(RefreshDatabase::class);
 
 function bookingWithStatus(string $status, ?User $client = null, ?User $worker = null): Booking
 {
-    $client   ??= User::factory()->create(['role' => 'client']);
-    $worker   ??= User::factory()->create(['role' => 'worker']);
-    $category   = ServiceCategory::factory()->create();
+    $client ??= User::factory()->create(['role' => 'client']);
+    $worker ??= User::factory()->create(['role' => 'worker']);
+    $category = ServiceCategory::factory()->create();
 
     return Booking::factory()->create([
-        'client_id'           => $client->id,
-        'worker_id'           => $worker->id,
+        'client_id' => $client->id,
+        'worker_id' => $worker->id,
         'service_category_id' => $category->id,
-        'status'              => $status,
-        'scheduled_at'        => now()->addDay(),
+        'status' => $status,
+        'scheduled_at' => now()->addDay(),
     ]);
 }
 
@@ -28,13 +28,14 @@ function workerUser(): User
 {
     $worker = User::factory()->create(['role' => 'worker']);
     WorkerProfile::factory()->create(['user_id' => $worker->id]);
+
     return $worker;
 }
 
 // ── Accept ────────────────────────────────────────────────────────────────────
 
 it('worker accepts a pending booking', function () {
-    $worker  = workerUser();
+    $worker = workerUser();
     $booking = bookingWithStatus('pending', worker: $worker);
 
     $this->actingAs($worker)
@@ -44,7 +45,7 @@ it('worker accepts a pending booking', function () {
 });
 
 it('worker cannot accept an already-accepted booking', function () {
-    $worker  = workerUser();
+    $worker = workerUser();
     $booking = bookingWithStatus('accepted', worker: $worker);
 
     $this->actingAs($worker)
@@ -56,7 +57,7 @@ it('worker cannot accept an already-accepted booking', function () {
 // ── Decline ───────────────────────────────────────────────────────────────────
 
 it('worker declines a pending booking', function () {
-    $worker  = workerUser();
+    $worker = workerUser();
     $booking = bookingWithStatus('pending', worker: $worker);
 
     $this->actingAs($worker)
@@ -68,8 +69,8 @@ it('worker declines a pending booking', function () {
 // ── Cancel ────────────────────────────────────────────────────────────────────
 
 it('client cancels a pending booking', function () {
-    $client  = User::factory()->create(['role' => 'client']);
-    $worker  = workerUser();
+    $client = User::factory()->create(['role' => 'client']);
+    $worker = workerUser();
     $booking = bookingWithStatus('pending', $client, $worker);
 
     $this->actingAs($client)
@@ -80,8 +81,8 @@ it('client cancels a pending booking', function () {
 });
 
 it('worker cancels an accepted booking', function () {
-    $client  = User::factory()->create(['role' => 'client']);
-    $worker  = workerUser();
+    $client = User::factory()->create(['role' => 'client']);
+    $worker = workerUser();
     $booking = bookingWithStatus('accepted', $client, $worker);
 
     $this->actingAs($worker)
@@ -92,8 +93,8 @@ it('worker cancels an accepted booking', function () {
 });
 
 it('cannot cancel a completed booking', function () {
-    $client  = User::factory()->create(['role' => 'client']);
-    $worker  = workerUser();
+    $client = User::factory()->create(['role' => 'client']);
+    $worker = workerUser();
     $booking = bookingWithStatus('completed', $client, $worker);
 
     $this->actingAs($client)
@@ -110,13 +111,7 @@ it('notifies the worker when a client reschedules a booking', function () {
     $this->mock(NotificationService::class)
         ->shouldReceive('notify')
         ->once()
-        ->withArgs(fn (User $user, string $title, string $body, string $type): bool =>
-            $user->id === $worker->id && $type === 'booking_rescheduled'
-        )
-        ->shouldReceive('sendPush')
-        ->once()
-        ->withArgs(fn (User $user, string $title, string $body, array $data): bool =>
-            $user->id === $worker->id && $data['type'] === 'booking_rescheduled'
+        ->withArgs(fn (User $user, string $title, string $body, string $type): bool => $user->id === $worker->id && $type === 'booking_rescheduled'
         );
 
     $this->actingAs($client)
@@ -130,7 +125,7 @@ it('notifies the worker when a client reschedules a booking', function () {
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 it('worker starts an accepted booking', function () {
-    $worker  = workerUser();
+    $worker = workerUser();
     $booking = bookingWithStatus('accepted', worker: $worker);
 
     $response = $this->actingAs($worker)
@@ -145,7 +140,7 @@ it('worker starts an accepted booking', function () {
 // ── Complete ──────────────────────────────────────────────────────────────────
 
 it('worker completes an active booking', function () {
-    $worker  = workerUser();
+    $worker = workerUser();
     $booking = bookingWithStatus('active', worker: $worker);
 
     $response = $this->actingAs($worker)
@@ -162,7 +157,7 @@ it('worker completes an active booking', function () {
 // ── Authorization ─────────────────────────────────────────────────────────────
 
 it('wrong worker cannot accept another workers booking', function () {
-    $booking    = bookingWithStatus('pending');
+    $booking = bookingWithStatus('pending');
     $otherWorker = workerUser();
 
     $this->actingAs($otherWorker)

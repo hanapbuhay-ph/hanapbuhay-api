@@ -19,24 +19,24 @@ function makeRemainingAdmin(): User
 
 function makeRemainingReport(string $reason = 'misconduct'): Report
 {
-    $client   = makeBookingClient();
-    $worker   = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $category = ServiceCategory::factory()->create();
 
     $booking = Booking::factory()->create([
-        'client_id'           => $client->id,
-        'worker_id'           => $worker->id,
+        'client_id' => $client->id,
+        'worker_id' => $worker->id,
         'service_category_id' => $category->id,
-        'status'              => 'completed',
+        'status' => 'completed',
     ]);
 
     return Report::create([
-        'booking_id'    => $booking->id,
-        'reported_by'   => $client->id,
+        'booking_id' => $booking->id,
+        'reported_by' => $client->id,
         'reported_user' => $worker->id,
-        'reason'        => $reason,
-        'description'   => 'Test report.',
-        'status'        => 'under_review',
+        'reason' => $reason,
+        'description' => 'Test report.',
+        'status' => 'under_review',
     ]);
 }
 
@@ -71,22 +71,22 @@ it('dashboard response includes all spec-defined fields', function () {
 });
 
 it('dashboard total_active_job_posts counts active non-deleted posts', function () {
-    $admin   = makeRemainingAdmin();
-    $worker  = makeApprovedBookingWorker();
+    $admin = makeRemainingAdmin();
+    $worker = makeApprovedBookingWorker();
     $profile = $worker->workerProfile;
-    $cat     = ServiceCategory::factory()->create();
+    $cat = ServiceCategory::factory()->create();
 
     JobPost::factory()->count(3)->create([
-        'worker_profile_id'   => $profile->id,
+        'worker_profile_id' => $profile->id,
         'service_category_id' => $cat->id,
-        'is_active'           => true,
+        'is_active' => true,
     ]);
 
     // Soft-deleted one should NOT count
     $deleted = JobPost::factory()->create([
-        'worker_profile_id'   => $profile->id,
+        'worker_profile_id' => $profile->id,
         'service_category_id' => $cat->id,
-        'is_active'           => true,
+        'is_active' => true,
     ]);
     $deleted->delete();
 
@@ -100,26 +100,25 @@ it('dashboard total_active_job_posts counts active non-deleted posts', function 
 // ══════════════════════════════════════════════════════════════════════════════
 
 it('approving a verification automatically sets trust_tier to verified', function () {
-    $admin   = makeRemainingAdmin();
-    $worker  = User::factory()->create(['role' => 'worker']);
+    $admin = makeRemainingAdmin();
+    $worker = User::factory()->create(['role' => 'worker']);
     $profile = WorkerProfile::factory()->create([
-        'user_id'             => $worker->id,
+        'user_id' => $worker->id,
         'verification_status' => 'pending',
-        'trust_tier'          => null,
+        'trust_tier' => null,
     ]);
     VerificationDocument::factory()->create([
         'worker_profile_id' => $profile->id,
-        'status'            => 'pending',
+        'status' => 'pending',
     ]);
 
     $this->mock(NotificationService::class)
         ->shouldReceive('notify')
-        ->once()
-        ->shouldReceive('sendPush')->once();
+        ->once();
 
     $this->actingAs($admin)
         ->postJson("/api/admin/verifications/{$profile->id}/review", [
-            'action'      => 'approve',
+            'action' => 'approve',
             'admin_notes' => 'All good.',
         ])
         ->assertStatus(200)
@@ -131,22 +130,20 @@ it('approving a verification automatically sets trust_tier to verified', functio
 });
 
 it('rejecting a verification does NOT set trust_tier', function () {
-    $admin   = makeRemainingAdmin();
-    $worker  = User::factory()->create(['role' => 'worker']);
+    $admin = makeRemainingAdmin();
+    $worker = User::factory()->create(['role' => 'worker']);
     $profile = WorkerProfile::factory()->create([
-        'user_id'             => $worker->id,
+        'user_id' => $worker->id,
         'verification_status' => 'pending',
-        'trust_tier'          => null,
+        'trust_tier' => null,
     ]);
     VerificationDocument::factory()->create([
         'worker_profile_id' => $profile->id,
-        'status'            => 'pending',
+        'status' => 'pending',
     ]);
 
     $this->mock(NotificationService::class)
         ->shouldReceive('notify')
-        ->once()
-        ->shouldReceive('sendPush')
         ->once();
 
     $this->actingAs($admin)
@@ -194,7 +191,7 @@ it('admin reports: all reports returned when no reason filter given', function (
 // ══════════════════════════════════════════════════════════════════════════════
 
 it('resolving a report with resolution_action=account_suspended suspends the user', function () {
-    $admin  = makeRemainingAdmin();
+    $admin = makeRemainingAdmin();
     $report = makeRemainingReport();
 
     $reportedUser = User::find($report->reported_user);
@@ -202,9 +199,9 @@ it('resolving a report with resolution_action=account_suspended suspends the use
 
     $this->actingAs($admin)
         ->patchJson("/api/admin/reports/{$report->id}/resolve", [
-            'status'            => 'resolved',
+            'status' => 'resolved',
             'resolution_action' => 'account_suspended',
-            'admin_notes'       => 'Suspended per policy.',
+            'admin_notes' => 'Suspended per policy.',
         ])
         ->assertStatus(200)
         ->assertJsonPath('data.status', 'resolved');
@@ -213,16 +210,16 @@ it('resolving a report with resolution_action=account_suspended suspends the use
 });
 
 it('resolving a report with resolution_action=verification_revoked revokes trust tier', function () {
-    $admin  = makeRemainingAdmin();
+    $admin = makeRemainingAdmin();
     $report = makeRemainingReport();
 
-    $worker  = User::find($report->reported_user);
+    $worker = User::find($report->reported_user);
     $profile = $worker->workerProfile;
     $profile->update(['trust_tier' => 'verified']);
 
     $this->actingAs($admin)
         ->patchJson("/api/admin/reports/{$report->id}/resolve", [
-            'status'            => 'resolved',
+            'status' => 'resolved',
             'resolution_action' => 'verification_revoked',
         ])
         ->assertStatus(200);
@@ -231,7 +228,7 @@ it('resolving a report with resolution_action=verification_revoked revokes trust
 });
 
 it('resolving with resolution_action=warning_issued only updates status', function () {
-    $admin  = makeRemainingAdmin();
+    $admin = makeRemainingAdmin();
     $report = makeRemainingReport();
 
     $reportedUser = User::find($report->reported_user);
@@ -239,9 +236,9 @@ it('resolving with resolution_action=warning_issued only updates status', functi
 
     $this->actingAs($admin)
         ->patchJson("/api/admin/reports/{$report->id}/resolve", [
-            'status'            => 'resolved',
+            'status' => 'resolved',
             'resolution_action' => 'warning_issued',
-            'admin_notes'       => 'Warning issued.',
+            'admin_notes' => 'Warning issued.',
         ])
         ->assertStatus(200)
         ->assertJsonPath('data.status', 'resolved');
@@ -250,12 +247,12 @@ it('resolving with resolution_action=warning_issued only updates status', functi
 });
 
 it('resolving with resolution_action=no_action just marks resolved with no side-effects', function () {
-    $admin  = makeRemainingAdmin();
+    $admin = makeRemainingAdmin();
     $report = makeRemainingReport();
 
     $this->actingAs($admin)
         ->patchJson("/api/admin/reports/{$report->id}/resolve", [
-            'status'            => 'resolved',
+            'status' => 'resolved',
             'resolution_action' => 'no_action',
         ])
         ->assertStatus(200)
@@ -263,19 +260,19 @@ it('resolving with resolution_action=no_action just marks resolved with no side-
 });
 
 it('returns 422 for invalid resolution_action value', function () {
-    $admin  = makeRemainingAdmin();
+    $admin = makeRemainingAdmin();
     $report = makeRemainingReport();
 
     $this->actingAs($admin)
         ->patchJson("/api/admin/reports/{$report->id}/resolve", [
-            'status'            => 'resolved',
+            'status' => 'resolved',
             'resolution_action' => 'vaporize_user',
         ])
         ->assertStatus(422);
 });
 
 it('legacy action field still works alongside new resolution_action', function () {
-    $admin  = makeRemainingAdmin();
+    $admin = makeRemainingAdmin();
     $report = makeRemainingReport();
 
     $reportedUser = User::find($report->reported_user);

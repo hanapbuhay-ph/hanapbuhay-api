@@ -66,7 +66,6 @@ it('admin can update a worker trust tier', function () {
     $notificationService = $this->mock(NotificationService::class);
     $notificationService->shouldReceive('notify')->once()
         ->andReturnUsing(fn () => new HanapbuhayNotification);
-    $notificationService->shouldReceive('sendPush')->once();
 
     $this->actingAs($admin)
         ->postJson("/api/admin/workers/{$profile->id}/trust-tier", [
@@ -97,13 +96,6 @@ it('warns the worker when their revoked trust tier hides job posts from the clie
                 && ($data['posts_hidden_from_client_feed'] ?? false) === true;
         })
         ->andReturnUsing(fn () => new HanapbuhayNotification);
-    $notificationService->shouldReceive('sendPush')
-        ->once()
-        ->withArgs(function (User $user, string $title, string $message) use ($worker): bool {
-            return $user->id === $worker->id
-                && $title === 'Trust Tier Updated'
-                && str_contains($message, 'will no longer appear in the client home feed');
-        });
 
     $this->actingAs($admin)
         ->postJson("/api/admin/workers/{$profile->id}/trust-tier", [
@@ -124,7 +116,6 @@ it('audit log is written when trust tier is updated', function () {
     $notificationService = $this->mock(NotificationService::class);
     $notificationService->shouldReceive('notify')->once()
         ->andReturnUsing(fn () => new HanapbuhayNotification);
-    $notificationService->shouldReceive('sendPush')->once();
 
     $this->actingAs($admin)
         ->postJson("/api/admin/workers/{$profile->id}/trust-tier", [

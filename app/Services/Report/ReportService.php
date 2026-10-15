@@ -6,11 +6,12 @@ use App\Models\Booking;
 use App\Models\Report;
 use App\Models\User;
 use App\Services\AdminNotificationService;
-use App\Services\Notification\NotificationService;
 use App\Services\Media\MediaStorageService;
+use App\Services\Notification\NotificationService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 class ReportService
@@ -69,7 +70,7 @@ class ReportService
                     /** @var UploadedFile $photo */
                     $stored[] = app(MediaStorageService::class)->storePrivateFile(
                         $photo,
-                        "reports/{$booking->id}/".\Illuminate\Support\Str::uuid().'.'.$photo->getClientOriginalExtension(),
+                        "reports/{$booking->id}/".Str::uuid().'.'.$photo->getClientOriginalExtension(),
                     );
                 }
                 $evidencePaths = $stored;
@@ -111,7 +112,6 @@ class ReportService
         ];
 
         $this->notifications->notify($reportedUser, $title, $body, 'report_received', $notificationData);
-        $this->notifications->sendPush($reportedUser, $title, $body, $notificationData);
 
         if ($submittedByAdmin !== null) {
             $reporterTitle = 'A report was submitted on your behalf';
@@ -122,7 +122,6 @@ class ReportService
                 'booking_id' => (string) $booking->id,
             ];
             $this->notifications->notify($reporter, $reporterTitle, $reporterBody, 'report_submitted_on_behalf', $reporterData);
-            $this->notifications->sendPush($reporter, $reporterTitle, $reporterBody, $reporterData);
         }
 
         return $report;

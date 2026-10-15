@@ -6,8 +6,8 @@ use App\Events\NewMessage;
 use App\Models\Booking;
 use App\Models\Message;
 use App\Models\User;
-use App\Services\Notification\NotificationService;
 use App\Services\Media\MediaStorageService;
+use App\Services\Notification\NotificationService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -29,10 +29,10 @@ class MessageService
         // Find all booking IDs the user is part of that have at least one message
         $bookingIds = Booking::where(function ($q) use ($user) {
             $q->where('client_id', $user->id)
-              ->orWhere('worker_id', $user->id);
+                ->orWhere('worker_id', $user->id);
         })
-        ->whereHas('messages')
-        ->pluck('id');
+            ->whereHas('messages')
+            ->pluck('id');
 
         $conversations = [];
 
@@ -61,22 +61,22 @@ class MessageService
             $otherParty = $user->id === $booking->client_id ? $booking->worker : $booking->client;
 
             $conversation = [
-                'booking_id'      => $booking->id,
-                'booking_code'    => $booking->booking_code,
-                'booking_status'  => $booking->status,
-                'other_party'     => [
-                    'id'                => $otherParty?->id,
-                    'name'              => $otherParty?->name,
-                    'role'              => $otherParty?->role,
-                    'is_online'         => $otherParty?->last_seen_at?->gte(now()->subMinutes(5)) ?? false,
+                'booking_id' => $booking->id,
+                'booking_code' => $booking->booking_code,
+                'booking_status' => $booking->status,
+                'other_party' => [
+                    'id' => $otherParty?->id,
+                    'name' => $otherParty?->name,
+                    'role' => $otherParty?->role,
+                    'is_online' => $otherParty?->last_seen_at?->gte(now()->subMinutes(5)) ?? false,
                     'availability_status' => $otherParty?->workerProfile?->availability_status,
                     'profile_photo_url' => $otherParty?->profile_photo_path
                         ? app(MediaStorageService::class)->publicUrl($otherParty->profile_photo_path)
                         : null,
                 ],
-                'last_message'    => $lastMessage?->content,
+                'last_message' => $lastMessage?->content,
                 'last_message_at' => $lastMessage?->created_at?->toIso8601String(),
-                'unread_count'    => $unreadCount,
+                'unread_count' => $unreadCount,
             ];
 
             $otherPartyId = $otherParty?->id;
@@ -90,6 +90,7 @@ class MessageService
 
             if ($existingIndex === false) {
                 $conversations[] = $conversation;
+
                 continue;
             }
 
@@ -105,6 +106,7 @@ class MessageService
         usort($conversations, function ($a, $b) {
             $aTime = $a['last_message_at'] ?? '';
             $bTime = $b['last_message_at'] ?? '';
+
             return strcmp($bTime, $aTime); // descending: b before a
         });
 
@@ -159,26 +161,26 @@ class MessageService
 
         if ($attachment !== null) {
             try {
-                $ext            = $attachment->getClientOriginalExtension();
-                $filename       = "messages/{$booking->id}/" . uniqid('msg_', true) . ".{$ext}";
+                $ext = $attachment->getClientOriginalExtension();
+                $filename = "messages/{$booking->id}/".uniqid('msg_', true).".{$ext}";
                 $attachmentPath = app(MediaStorageService::class)->storePrivateFile($attachment, $filename);
             } catch (Throwable $e) {
                 Log::error('Message attachment upload failed', [
                     'booking_id' => $booking->id,
-                    'sender_id'  => $sender->id,
-                    'error'      => $e->getMessage(),
+                    'sender_id' => $sender->id,
+                    'error' => $e->getMessage(),
                 ]);
                 throw new RuntimeException('Attachment upload failed. Please try again.');
             }
         }
 
         $message = Message::create([
-            'booking_id'      => $booking->id,
-            'sender_id'       => $sender->id,
-            'receiver_id'     => $receiverId,
-            'content'         => $content ?? '',
+            'booking_id' => $booking->id,
+            'sender_id' => $sender->id,
+            'receiver_id' => $receiverId,
+            'content' => $content ?? '',
             'attachment_path' => $attachmentPath,
-            'is_read'         => false,
+            'is_read' => false,
         ]);
 
         $message->load('sender:id,name');
@@ -204,12 +206,6 @@ class MessageService
                 $content ?: 'You received a new attachment.',
                 'new_chat_message',
                 $notificationData,
-            );
-            $this->notifications->sendPush(
-                $receiver,
-                'New Message',
-                $content ?: 'You received a new attachment.',
-                $notificationData + ['type' => 'new_chat_message'],
             );
         }
 

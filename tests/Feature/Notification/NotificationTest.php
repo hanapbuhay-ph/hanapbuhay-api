@@ -5,6 +5,7 @@ use App\Models\Booking;
 use App\Models\DeviceToken;
 use App\Models\HanapbuhayNotification;
 use App\Models\ServiceCategory;
+use App\Models\User;
 use App\Services\Notification\NotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
@@ -16,15 +17,15 @@ uses(RefreshDatabase::class);
 // ── Shared setup ──────────────────────────────────────────────────────────────
 
 $makeBooking = function (string $status, ?int $clientId = null, ?int $workerId = null): Booking {
-    $client   = $clientId ? \App\Models\User::find($clientId) : makeBookingClient();
-    $worker   = $workerId ? \App\Models\User::find($workerId) : makeApprovedBookingWorker();
+    $client = $clientId ? User::find($clientId) : makeBookingClient();
+    $worker = $workerId ? User::find($workerId) : makeApprovedBookingWorker();
     $category = ServiceCategory::factory()->create();
 
     return Booking::factory()->create([
-        'client_id'           => $client->id,
-        'worker_id'           => $worker->id,
+        'client_id' => $client->id,
+        'worker_id' => $worker->id,
         'service_category_id' => $category->id,
-        'status'              => $status,
+        'status' => $status,
     ]);
 };
 
@@ -62,7 +63,7 @@ it('registers a new device token', function () {
 
     $this->actingAs($user)
         ->postJson('/api/notifications/register-device', [
-            'fcm_token'   => 'token-abc-123',
+            'fcm_token' => 'token-abc-123',
             'device_type' => 'android',
         ])
         ->assertStatus(200)
@@ -70,7 +71,7 @@ it('registers a new device token', function () {
         ->assertJsonPath('message', 'Device registered successfully.');
 
     $this->assertDatabaseHas('device_tokens', [
-        'user_id'   => $user->id,
+        'user_id' => $user->id,
         'fcm_token' => 'token-abc-123',
     ]);
 });
@@ -100,7 +101,7 @@ it('returns 422 when device_type is invalid', function () {
 
     $this->actingAs($user)
         ->postJson('/api/notifications/register-device', [
-            'fcm_token'   => 'token-abc-123',
+            'fcm_token' => 'token-abc-123',
             'device_type' => 'smartwatch',
         ])
         ->assertStatus(422)
@@ -109,7 +110,7 @@ it('returns 422 when device_type is invalid', function () {
 
 it('returns 401 when unauthenticated on register-device', function () {
     $this->postJson('/api/notifications/register-device', [
-        'fcm_token'   => 'token-abc-123',
+        'fcm_token' => 'token-abc-123',
         'device_type' => 'android',
     ])->assertStatus(401);
 });
@@ -120,14 +121,11 @@ it('worker accepting a booking notifies the client', function () use ($makeBooki
     $notifications = mock(NotificationService::class);
     $this->app->instance(NotificationService::class, $notifications);
 
-    $client  = makeBookingClient();
-    $worker  = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $booking = $makeBooking('pending', $client->id, $worker->id);
 
     $notifications->shouldReceive('notify')->once();
-    $notifications->shouldReceive('sendPush')
-        ->once()
-        ->withArgs(fn ($user, $title) => $user->id === $client->id && $title === 'Booking Accepted');
 
     $this->actingAs($worker)
         ->postJson("/api/bookings/{$booking->id}/accept")
@@ -138,14 +136,11 @@ it('worker declining a booking notifies the client', function () use ($makeBooki
     $notifications = mock(NotificationService::class);
     $this->app->instance(NotificationService::class, $notifications);
 
-    $client  = makeBookingClient();
-    $worker  = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $booking = $makeBooking('pending', $client->id, $worker->id);
 
     $notifications->shouldReceive('notify')->once();
-    $notifications->shouldReceive('sendPush')
-        ->once()
-        ->withArgs(fn ($user, $title) => $user->id === $client->id && $title === 'Booking Declined');
 
     $this->actingAs($worker)
         ->postJson("/api/bookings/{$booking->id}/decline")
@@ -156,14 +151,11 @@ it('worker completing a booking notifies the client', function () use ($makeBook
     $notifications = mock(NotificationService::class);
     $this->app->instance(NotificationService::class, $notifications);
 
-    $client  = makeBookingClient();
-    $worker  = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $booking = $makeBooking('active', $client->id, $worker->id);
 
     $notifications->shouldReceive('notify')->once();
-    $notifications->shouldReceive('sendPush')
-        ->once()
-        ->withArgs(fn ($user, $title) => $user->id === $client->id && $title === 'Booking Completed');
 
     $this->actingAs($worker)
         ->postJson("/api/bookings/{$booking->id}/complete")
@@ -174,14 +166,11 @@ it('client rating a booking notifies the rated worker', function () use ($makeBo
     $notifications = mock(NotificationService::class);
     $this->app->instance(NotificationService::class, $notifications);
 
-    $client  = makeBookingClient();
-    $worker  = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $booking = $makeBooking('completed', $client->id, $worker->id);
 
     $notifications->shouldReceive('notify')->once();
-    $notifications->shouldReceive('sendPush')
-        ->once()
-        ->withArgs(fn ($user, $title) => $user->id === $worker->id && $title === 'New Review');
 
     $this->actingAs($client)
         ->postJson("/api/bookings/{$booking->id}/rate", ['score' => 5])
@@ -201,8 +190,8 @@ it('sendPush does nothing when user has no registered tokens', function () {
     app()->instance(Messaging::class, $messaging);
     $messaging->shouldNotReceive('send');
 
-    $service = new NotificationService();
-    $user    = makeBookingClient();
+    $service = new NotificationService;
+    $user = makeBookingClient();
 
     $service->sendPush($user, 'Test', 'Body');
 });
@@ -211,7 +200,7 @@ it('does not send push when push or the notification category is disabled', func
     $messaging = mock(Messaging::class);
     app()->instance(Messaging::class, $messaging);
     $messaging->shouldNotReceive('send');
-    $service = new NotificationService();
+    $service = new NotificationService;
     $user = makeBookingClient();
 
     DeviceToken::create([
@@ -233,7 +222,7 @@ it('does not send push when push or the notification category is disabled', func
 it('stores and emails enabled booking updates but never emails messages', function () {
     Mail::fake();
     $user = makeBookingClient();
-    $service = new NotificationService();
+    $service = new NotificationService;
 
     $bookingNotification = $service->notify(
         $user,
@@ -249,6 +238,31 @@ it('stores and emails enabled booking updates but never emails messages', functi
     Mail::assertQueued(NotificationEmail::class, 1);
 });
 
+it('sends one device push when an in-app notification is created', function () {
+    Mail::fake();
+    $messaging = mock(Messaging::class);
+    app()->instance(Messaging::class, $messaging);
+    $messaging->shouldReceive('send')->once()->andReturn([]);
+
+    $user = makeBookingClient();
+    DeviceToken::create([
+        'user_id' => $user->id,
+        'fcm_token' => 'valid-token-xyz',
+        'device_type' => 'android',
+    ]);
+
+    $notification = (new NotificationService)->notify(
+        $user,
+        'Booking Accepted',
+        'Your booking was accepted.',
+        'booking_accepted',
+        ['booking_id' => 42],
+    );
+
+    expect($notification)->toBeInstanceOf(HanapbuhayNotification::class)
+        ->and($notification->data)->toBe(['booking_id' => 42]);
+});
+
 it('suppresses disabled categories and their booking emails', function () {
     Mail::fake();
     $user = makeBookingClient();
@@ -256,7 +270,7 @@ it('suppresses disabled categories and their booking emails', function () {
         'notify_booking_updates' => false,
         'notify_messages' => false,
     ]);
-    $service = new NotificationService();
+    $service = new NotificationService;
 
     expect($service->notify($user, 'Booking Accepted', 'Updated', 'booking_accepted'))->toBeNull()
         ->and($service->notify($user, 'New Message', 'Hello', 'new_chat_message'))->toBeNull()
@@ -270,7 +284,7 @@ it('does not queue booking emails when email notifications are disabled', functi
     $user = makeBookingClient();
     $user->update(['notify_email' => false]);
 
-    (new NotificationService())->notify($user, 'Booking Accepted', 'Updated', 'booking_accepted');
+    (new NotificationService)->notify($user, 'Booking Accepted', 'Updated', 'booking_accepted');
 
     Mail::assertNothingQueued();
 });
@@ -280,12 +294,12 @@ it('sendPush calls FCM send once for a user with one token', function () {
     app()->instance(Messaging::class, $messaging);
     $messaging->shouldReceive('send')->once()->andReturn([]);
 
-    $service = new NotificationService();
-    $user    = makeBookingClient();
+    $service = new NotificationService;
+    $user = makeBookingClient();
 
     DeviceToken::create([
-        'user_id'     => $user->id,
-        'fcm_token'   => 'valid-token-xyz',
+        'user_id' => $user->id,
+        'fcm_token' => 'valid-token-xyz',
         'device_type' => 'android',
     ]);
 
@@ -299,12 +313,12 @@ it('sendPush deletes invalid token on MessagingException and does not throw', fu
     app()->instance(Messaging::class, $messaging);
     $messaging->shouldReceive('send')->once()->andThrow($exception);
 
-    $service = new NotificationService();
-    $user    = makeBookingClient();
+    $service = new NotificationService;
+    $user = makeBookingClient();
 
     DeviceToken::create([
-        'user_id'     => $user->id,
-        'fcm_token'   => 'bad-token-xyz',
+        'user_id' => $user->id,
+        'fcm_token' => 'bad-token-xyz',
         'device_type' => 'ios',
     ]);
 

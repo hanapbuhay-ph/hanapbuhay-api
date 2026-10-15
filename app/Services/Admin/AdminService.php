@@ -15,6 +15,7 @@ use App\Models\ServiceCategory;
 use App\Models\User;
 use App\Models\VerificationHistory;
 use App\Models\WorkerProfile;
+use App\Services\Media\MediaStorageService;
 use App\Services\Notification\NotificationService;
 use App\Services\SecurityEventLogger;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -143,7 +144,7 @@ class AdminService
             'admin_notes' => $adminNotes,
         ]);
 
-        // Reload the user relationship for the push notification
+        // Reload the user relationship for the notification.
         $workerProfile->load('user');
 
         $pushMap = [
@@ -154,12 +155,6 @@ class AdminService
 
         [$title, $body] = $pushMap[$newStatus];
 
-        $this->notificationService->sendPush(
-            $workerProfile->user,
-            $title,
-            $body,
-            ['type' => 'verification_'.$newStatus],
-        );
         $this->notificationService->notify(
             $workerProfile->user,
             $title,
@@ -461,7 +456,7 @@ class AdminService
             return $storagePaths;
         });
 
-        if ($storagePaths !== [] && ! app(\App\Services\Media\MediaStorageService::class)->deleteMany($storagePaths)) {
+        if ($storagePaths !== [] && ! app(MediaStorageService::class)->deleteMany($storagePaths)) {
             Log::warning('Unable to remove one or more files belonging to an admin-deleted user.', [
                 'user_id' => $userIdForEvent,
                 'paths' => $storagePaths,
@@ -966,12 +961,6 @@ class AdminService
                 'tier' => $tier,
                 'posts_hidden_from_client_feed' => $tier === 'revoked',
             ],
-        );
-        $this->notificationService->sendPush(
-            $profile->user,
-            'Trust Tier Updated',
-            $notificationMessage,
-            ['type' => 'trust_tier_updated', 'tier' => $tier],
         );
 
         return $profile->load('user');
@@ -1696,10 +1685,6 @@ class AdminService
         $data = ['job_post_id' => (string) $post->id];
 
         $this->notificationService->notify($worker, $title, $body, "job_post_{$action}", $data);
-        $this->notificationService->sendPush($worker, $title, $body, [
-            'type' => "job_post_{$action}",
-            ...$data,
-        ]);
     }
 
     /**
@@ -1731,12 +1716,6 @@ class AdminService
                     $reason,
                     'job_post_removed',
                     ['job_post_id' => $post->id],
-                );
-                $this->notificationService->sendPush(
-                    $post->workerProfile->user,
-                    'Job post removed',
-                    $reason,
-                    ['type' => 'job_post_removed', 'job_post_id' => (string) $post->id],
                 );
             }
 

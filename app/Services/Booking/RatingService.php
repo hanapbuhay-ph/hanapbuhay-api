@@ -21,10 +21,10 @@ class RatingService
         return DB::transaction(function () use ($booking, $rater, $ratedUserId, $score, $comment): RatingReview {
             $rating = RatingReview::create([
                 'booking_id' => $booking->id,
-                'rated_by'   => $rater->id,
+                'rated_by' => $rater->id,
                 'rated_user' => $ratedUserId,
-                'score'      => $score,
-                'comment'    => $comment,
+                'score' => $score,
+                'comment' => $comment,
             ]);
 
             $ratedUser = User::find($ratedUserId);
@@ -35,7 +35,7 @@ class RatingService
                     ->first();
 
                 $ratedUser->workerProfile()->update([
-                    'total_reviews'  => $stats->total,
+                    'total_reviews' => $stats->total,
                     'average_rating' => round($stats->average, 2),
                 ]);
             }
@@ -49,12 +49,6 @@ class RatingService
                     ['booking_id' => $booking->id],
                 );
 
-                $this->notifications->sendPush(
-                    $ratedUser,
-                    'New Review',
-                    "You received a {$score}-star review.",
-                    ['booking_id' => (string) $booking->id, 'type' => 'new_review'],
-                );
             }
 
             return $rating;
