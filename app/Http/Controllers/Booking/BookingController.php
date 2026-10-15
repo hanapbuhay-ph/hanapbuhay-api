@@ -11,6 +11,8 @@ use App\Models\Booking;
 use App\Models\User;
 use App\Services\Booking\BookingService;
 use App\Services\Booking\RatingService;
+use App\Services\Media\MediaStorageService;
+use Carbon\Carbon;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -44,7 +46,7 @@ class BookingController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Booking created.',
-            'data'    => ['booking' => $this->formatBooking($booking)],
+            'data' => ['booking' => $this->formatBooking($booking)],
         ], 201);
     }
 
@@ -54,13 +56,15 @@ class BookingController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => [
-                'bookings'   => $paginator->items(),
+            'data' => [
+                'bookings' => collect($paginator->items())
+                    ->map(fn (Booking $booking): Booking => $this->withWorkerProfilePhotoUrl($booking))
+                    ->all(),
                 'pagination' => [
                     'current_page' => $paginator->currentPage(),
-                    'per_page'     => $paginator->perPage(),
-                    'total'        => $paginator->total(),
-                    'last_page'    => $paginator->lastPage(),
+                    'per_page' => $paginator->perPage(),
+                    'total' => $paginator->total(),
+                    'last_page' => $paginator->lastPage(),
                 ],
             ],
         ]);
@@ -78,7 +82,10 @@ class BookingController extends Controller
             return response()->json(['success' => false, 'message' => 'Forbidden.'], 403);
         }
 
-        return response()->json(['success' => true, 'data' => ['booking' => $booking]]);
+        return response()->json([
+            'success' => true,
+            'data' => ['booking' => $this->withWorkerProfilePhotoUrl($booking)],
+        ]);
     }
 
     /**
@@ -105,11 +112,11 @@ class BookingController extends Controller
 
         if ($request->input('action') === 'accept') {
             $result = $this->service->accept($booking);
-            $msg    = 'Booking accepted.';
+            $msg = 'Booking accepted.';
         } else {
             // Pass the decline reason through cancellation_reason for tracking
             $result = $this->service->decline($booking);
-            $msg    = 'Booking declined.';
+            $msg = 'Booking declined.';
         }
 
         if ($result instanceof JsonResponse) {
@@ -119,7 +126,7 @@ class BookingController extends Controller
         return response()->json([
             'success' => true,
             'message' => $msg,
-            'data'    => ['booking' => ['id' => $result->id, 'status' => $result->status]],
+            'data' => ['booking' => ['id' => $result->id, 'status' => $result->status]],
         ]);
     }
 
@@ -210,10 +217,10 @@ class BookingController extends Controller
 
         if ($request->input('status') === 'active') {
             $result = $this->service->start($booking);
-            $msg    = 'Booking marked as active.';
+            $msg = 'Booking marked as active.';
         } else {
             $result = $this->service->complete($booking);
-            $msg    = 'Booking marked as completed.';
+            $msg = 'Booking marked as completed.';
         }
 
         if ($result instanceof JsonResponse) {
@@ -223,10 +230,10 @@ class BookingController extends Controller
         return response()->json([
             'success' => true,
             'message' => $msg,
-            'data'    => [
+            'data' => [
                 'booking' => [
-                    'id'         => $result->id,
-                    'status'     => $result->status,
+                    'id' => $result->id,
+                    'status' => $result->status,
                     'started_at' => $result->started_at?->toIso8601String(),
                 ],
             ],
@@ -287,7 +294,7 @@ class BookingController extends Controller
             return response()->json(['success' => false, 'message' => 'Forbidden.'], 403);
         }
 
-        $scheduledAt = \Carbon\Carbon::parse($request->scheduled_at);
+        $scheduledAt = Carbon::parse($request->scheduled_at);
 
         $result = $this->service->reschedule($booking, $scheduledAt);
 
@@ -334,10 +341,10 @@ class BookingController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Review submitted.',
-            'data'    => [
+            'data' => [
                 'rating' => [
-                    'id'      => $rating->id,
-                    'score'   => $rating->score,
+                    'id' => $rating->id,
+                    'score' => $rating->score,
                     'comment' => $rating->comment,
                 ],
             ],
@@ -347,33 +354,48 @@ class BookingController extends Controller
     private function formatBooking(Booking $booking): array
     {
         return [
-            'id'               => $booking->id,
-            'booking_code'     => $booking->booking_code,
-            'status'           => $booking->status,
-            'worker'           => [
-                'id'                => $booking->worker->id,
-                'name'              => $booking->worker->name,
-                'profile_photo_url' => $booking->worker->profile_photo_path,
-                'barangay'          => $booking->worker->barangay?->name,
+            'id' => $booking->id,
+            'booking_code' => $booking->booking_code,
+            'status' => $booking->status,
+            'worker' => [
+                'id' => $booking->worker->id,
+                'worker_profile_id' => $booking->worker->workerProfile?->id,
+                'name' => $booking->worker->name,
+                'profile_photo_url' => app(MediaStorageService::class)
+                    ->publicUrl($booking->worker->profile_photo_path),
+                'barangay' => $booking->worker->barangay?->name,
             ],
-            'client'           => [
-                'id'                => $booking->client->id,
-                'name'              => $booking->client->name,
+            'client' => [
+                'id' => $booking->client->id,
+                'name' => $booking->client->name,
                 'profile_photo_url' => $booking->client->profile_photo_path,
-                'barangay'          => $booking->client->barangay?->name,
+                'barangay' => $booking->client->barangay?->name,
             ],
             'service_category' => [
-                'id'   => $booking->serviceCategory?->id,
+                'id' => $booking->serviceCategory?->id,
                 'name' => $booking->serviceCategory?->name,
             ],
-            'scheduled_at'     => $booking->scheduled_at,
-            'started_at'       => $booking->started_at,
-            'completed_at'     => $booking->completed_at,
+            'scheduled_at' => $booking->scheduled_at,
+            'started_at' => $booking->started_at,
+            'completed_at' => $booking->completed_at,
             'cancellation_reason' => $booking->cancellation_reason,
-            'is_client_tracking'  => $booking->is_client_tracking,
-            'is_worker_tracking'  => $booking->is_worker_tracking,
-            'notes'            => $booking->notes,
-            'created_at'       => $booking->created_at,
+            'is_client_tracking' => $booking->is_client_tracking,
+            'is_worker_tracking' => $booking->is_worker_tracking,
+            'notes' => $booking->notes,
+            'created_at' => $booking->created_at,
         ];
+    }
+
+    private function withWorkerProfilePhotoUrl(Booking $booking): Booking
+    {
+        $worker = $booking->worker;
+        if ($worker !== null) {
+            $worker->setAttribute(
+                'profile_photo_url',
+                app(MediaStorageService::class)->publicUrl($worker->profile_photo_path),
+            );
+        }
+
+        return $booking;
     }
 }

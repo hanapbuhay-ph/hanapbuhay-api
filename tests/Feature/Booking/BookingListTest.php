@@ -3,7 +3,6 @@
 use App\Models\Booking;
 use App\Models\ServiceCategory;
 use App\Models\User;
-use App\Models\WorkerProfile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -11,19 +10,20 @@ uses(RefreshDatabase::class);
 function createBookingFor(User $client, User $worker, string $status = 'pending'): Booking
 {
     $category = ServiceCategory::factory()->create();
+
     return Booking::factory()->create([
-        'client_id'           => $client->id,
-        'worker_id'           => $worker->id,
+        'client_id' => $client->id,
+        'worker_id' => $worker->id,
         'service_category_id' => $category->id,
-        'status'              => $status,
-        'scheduled_at'        => now()->addDay(),
+        'status' => $status,
+        'scheduled_at' => now()->addDay(),
     ]);
 }
 
 it('client sees only their own bookings', function () {
-    $client      = User::factory()->create(['role' => 'client']);
+    $client = User::factory()->create(['role' => 'client']);
     $otherClient = User::factory()->create(['role' => 'client']);
-    $worker      = makeWorkerForListing();
+    $worker = makeWorkerForListing();
 
     createBookingFor($client, $worker);
     createBookingFor($otherClient, $worker);
@@ -36,9 +36,9 @@ it('client sees only their own bookings', function () {
 });
 
 it('worker sees only their own bookings', function () {
-    $worker      = makeWorkerForListing();
+    $worker = makeWorkerForListing();
     $otherWorker = makeWorkerForListing();
-    $client      = User::factory()->create(['role' => 'client']);
+    $client = User::factory()->create(['role' => 'client']);
 
     createBookingFor($client, $worker);
     createBookingFor($client, $otherWorker);
@@ -50,7 +50,7 @@ it('worker sees only their own bookings', function () {
 });
 
 it('admin sees all bookings', function () {
-    $admin  = User::factory()->create(['role' => 'admin']);
+    $admin = User::factory()->create(['role' => 'admin']);
     $client = User::factory()->create(['role' => 'client']);
     $worker = makeWorkerForListing();
 
@@ -96,8 +96,8 @@ it('returns 401 when unauthenticated on list', function () {
 });
 
 it('returns a single booking for an authorized user', function () {
-    $client  = User::factory()->create(['role' => 'client']);
-    $worker  = makeWorkerForListing();
+    $client = User::factory()->create(['role' => 'client']);
+    $worker = makeWorkerForListing();
     $booking = createBookingFor($client, $worker);
 
     $this->actingAs($client)
@@ -123,10 +123,41 @@ it('includes the clients actual profile photo path in a workers jobs list', func
         );
 });
 
+it('includes the worker profile id in booking list and detail responses', function () {
+    $client = User::factory()->create(['role' => 'client']);
+    $worker = makeWorkerForListing();
+    $worker->update(['profile_photo_path' => 'profiles/worker-avatar.jpg']);
+    $booking = createBookingFor($client, $worker);
+
+    $this->actingAs($client)
+        ->getJson('/api/bookings')
+        ->assertOk()
+        ->assertJsonPath(
+            'data.bookings.0.worker.worker_profile.id',
+            $worker->workerProfile->id,
+        )
+        ->assertJsonPath(
+            'data.bookings.0.worker.profile_photo_url',
+            asset('storage/profiles/worker-avatar.jpg'),
+        );
+
+    $this->actingAs($client)
+        ->getJson("/api/bookings/{$booking->id}")
+        ->assertOk()
+        ->assertJsonPath(
+            'data.booking.worker.worker_profile.id',
+            $worker->workerProfile->id,
+        )
+        ->assertJsonPath(
+            'data.booking.worker.profile_photo_url',
+            asset('storage/profiles/worker-avatar.jpg'),
+        );
+});
+
 it('returns 403 when a different user tries to view a booking', function () {
-    $client   = User::factory()->create(['role' => 'client']);
-    $worker   = makeWorkerForListing();
-    $booking  = createBookingFor($client, $worker);
+    $client = User::factory()->create(['role' => 'client']);
+    $worker = makeWorkerForListing();
+    $booking = createBookingFor($client, $worker);
     $intruder = User::factory()->create(['role' => 'client']);
 
     $this->actingAs($intruder)

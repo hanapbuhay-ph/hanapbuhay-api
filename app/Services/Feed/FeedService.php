@@ -5,6 +5,7 @@ namespace App\Services\Feed;
 use App\Helpers\DistanceHelper;
 use App\Models\JobPost;
 use App\Models\User;
+use App\Services\Media\MediaStorageService;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 
@@ -50,7 +51,12 @@ class FeedService
 
         // ── Filters ──────────────────────────────────────────────────────────
 
-        if ($request->filled('category_id')) {
+        $categoryIds = $this->queryIds($request->input('category_ids'));
+        if ($categoryIds !== []) {
+            $query->whereIn('service_category_id', $categoryIds);
+        } elseif ($request->filled('category_ids')) {
+            $query->whereRaw('1 = 0');
+        } elseif ($request->filled('category_id')) {
             $query->where('service_category_id', $request->integer('category_id'));
         }
 
@@ -58,8 +64,26 @@ class FeedService
             $query->whereHas('workerProfile.user', fn ($q) => $q->where('barangay_id', $request->integer('barangay_id')));
         }
 
-        if ($request->filled('rate_type')) {
+        $rateTypes = $this->queryValues($request->input('rate_types'));
+        if ($rateTypes !== []) {
+            $query->whereIn('rate_type', $rateTypes);
+        } elseif ($request->filled('rate_types')) {
+            $query->whereRaw('1 = 0');
+        } elseif ($request->filled('rate_type')) {
             $query->where('rate_type', $request->string('rate_type'));
+        }
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            if ($search !== '') {
+                $term = "%{$search}%";
+                $query->where(function ($q) use ($term) {
+                    $q->whereHas('workerProfile.user', fn ($userQuery) => $userQuery->whereRaw('LOWER(name) LIKE LOWER(?)', [$term]))
+                        ->orWhereHas('serviceCategory', fn ($categoryQuery) => $categoryQuery->whereRaw('LOWER(name) LIKE LOWER(?)', [$term]))
+                        ->orWhereRaw('LOWER(title) LIKE LOWER(?)', [$term])
+                        ->orWhereRaw('LOWER(description) LIKE LOWER(?)', [$term]);
+                });
+            }
         }
 
         $verification = $request->input('verification', 'all');
@@ -147,7 +171,7 @@ class FeedService
                 'profile_photo_url' => $photoPath
                     ? (str_starts_with($photoPath, 'http://') || str_starts_with($photoPath, 'https://')
                         ? $photoPath
-                        : app(\App\Services\Media\MediaStorageService::class)->publicUrl($photoPath))
+                        : app(MediaStorageService::class)->publicUrl($photoPath))
                     : null,
                 'barangay' => $workerBarangay?->name,
                 'barangay_id' => $worker?->barangay_id,
@@ -172,11 +196,40 @@ class FeedService
             'is_available' => $post->is_available,
             'images' => $post->images->map(fn ($img) => [
                 'id' => $img->id,
-                'thumbnail_url' => app(\App\Services\Media\MediaStorageService::class)->publicUrl($img->thumbnail_path),
-                'image_url' => app(\App\Services\Media\MediaStorageService::class)->publicUrl($img->image_path),
+                'thumbnail_url' => app(MediaStorageService::class)->publicUrl($img->thumbnail_path),
+                'image_url' => app(MediaStorageService::class)->publicUrl($img->image_path),
                 'display_order' => $img->display_order,
             ])->values()->all(),
             'posted_at' => $post->created_at?->toIso8601String(),
         ];
+    }
+
+    /**
+     * Parse comma-separated query values while ignoring invalid and duplicate entries.
+     *
+     * @return list<int>
+     */
+    private function queryIds(mixed $value): array
+    {
+        $values = array_filter(
+            array_map('trim', explode(',', (string) $value)),
+            static fn (string $id): bool => ctype_digit($id),
+        );
+
+        return array_values(array_unique(array_filter(
+            array_map('intval', $values),
+            static fn (int $id): bool => $id > 0,
+        )));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function queryValues(mixed $value): array
+    {
+        return array_values(array_unique(array_filter(
+            array_map('trim', explode(',', (string) $value)),
+            static fn (string $item): bool => $item !== '',
+        )));
     }
 }

@@ -118,8 +118,6 @@ it('admin can request resubmission for a pending verification', function () {
     $this->mock(NotificationService::class)
         ->shouldReceive('notify')
         ->once()
-        ->shouldReceive('sendPush')
-        ->once()
         ->withArgs(fn ($user, $title) => $user->id === $worker->id && $title === 'Resubmission Required');
 
     $this->actingAs($admin)
@@ -233,8 +231,7 @@ it('accepting a booking creates an in-app notification for the client', function
     ]);
 
     $this->mock(NotificationService::class)
-        ->shouldReceive('notify')->once()
-        ->shouldReceive('sendPush')->once();
+        ->shouldReceive('notify')->once();
 
     $this->actingAs($worker)
         ->postJson("/api/bookings/{$booking->id}/accept")
@@ -254,8 +251,7 @@ it('declining a booking creates an in-app notification for the client', function
     ]);
 
     $this->mock(NotificationService::class)
-        ->shouldReceive('notify')->once()
-        ->shouldReceive('sendPush')->once();
+        ->shouldReceive('notify')->once();
 
     $this->actingAs($worker)
         ->postJson("/api/bookings/{$booking->id}/decline")
@@ -275,8 +271,7 @@ it('completing a booking creates an in-app notification for the client', functio
     ]);
 
     $this->mock(NotificationService::class)
-        ->shouldReceive('notify')->once()
-        ->shouldReceive('sendPush')->once();
+        ->shouldReceive('notify')->once();
 
     $this->actingAs($worker)
         ->postJson("/api/bookings/{$booking->id}/complete")
@@ -296,8 +291,7 @@ it('rating a booking creates an in-app notification for the rated worker', funct
     ]);
 
     $this->mock(NotificationService::class)
-        ->shouldReceive('notify')->once()
-        ->shouldReceive('sendPush')->once();
+        ->shouldReceive('notify')->once();
 
     $this->actingAs($client)
         ->postJson("/api/bookings/{$booking->id}/rate", ['score' => 5])

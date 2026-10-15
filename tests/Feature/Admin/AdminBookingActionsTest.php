@@ -47,16 +47,17 @@ it('allows an admin to create a pending booking for an active client and notifie
     ]);
 
     $notifications = $this->mock(NotificationService::class);
-    foreach ([$client, $worker] as $recipient) {
-        $notifications->shouldReceive('notify')
-            ->once()
-            ->withArgs(fn (User $user, string $title, string $body, string $type): bool => $user->id === $recipient->id && $type === 'booking_updated'
-            );
-        $notifications->shouldReceive('sendPush')
-            ->once()
-            ->withArgs(fn (User $user, string $title, string $body, array $data): bool => $user->id === $recipient->id && $data['type'] === 'booking_updated'
-            );
-    }
+    $notifications->shouldReceive('notify')
+        ->times(3)
+        ->withArgs(fn (User $user, string $title, string $body, string $notificationType, array $data): bool => in_array(
+            [$user->id, $notificationType],
+            [
+                [$worker->id, 'booking_created'],
+                [$client->id, 'booking_updated'],
+                [$worker->id, 'booking_updated'],
+            ],
+            true,
+        ) && isset($data['booking_id']));
 
     $this->actingAs($admin)
         ->postJson('/api/admin/bookings', [
@@ -134,10 +135,6 @@ it('allows an admin to reschedule a pending booking and notifies both parties', 
         $notifications->shouldReceive('notify')
             ->once()
             ->withArgs(fn (User $user, string $title, string $body, string $type): bool => $user->id === $recipient->id && $type === 'booking_rescheduled'
-            );
-        $notifications->shouldReceive('sendPush')
-            ->once()
-            ->withArgs(fn (User $user, string $title, string $body, array $data): bool => $user->id === $recipient->id && $data['type'] === 'booking_rescheduled'
             );
     }
 

@@ -12,15 +12,15 @@ uses(RefreshDatabase::class);
 
 function makeGapBooking(string $status = 'pending'): Booking
 {
-    $client   = makeBookingClient();
-    $worker   = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $category = ServiceCategory::factory()->create();
 
     return Booking::factory()->create([
-        'client_id'           => $client->id,
-        'worker_id'           => $worker->id,
+        'client_id' => $client->id,
+        'worker_id' => $worker->id,
         'service_category_id' => $category->id,
-        'status'              => $status,
+        'status' => $status,
     ]);
 }
 
@@ -35,11 +35,10 @@ function makeGapAdmin(): User
 
 it('worker can mark a booking as active via /status endpoint', function () {
     $booking = makeGapBooking('accepted');
-    $worker  = $booking->worker;
+    $worker = $booking->worker;
 
     $this->mock(NotificationService::class)
-        ->shouldReceive('notify')->zeroOrMoreTimes()
-        ->shouldReceive('sendPush')->zeroOrMoreTimes();
+        ->shouldReceive('notify')->zeroOrMoreTimes();
 
     $this->actingAs($worker)
         ->postJson("/api/bookings/{$booking->id}/status", ['status' => 'active'])
@@ -53,11 +52,10 @@ it('worker can mark a booking as active via /status endpoint', function () {
 
 it('worker can mark a booking as completed via /status endpoint', function () {
     $booking = makeGapBooking('active');
-    $worker  = $booking->worker;
+    $worker = $booking->worker;
 
     $this->mock(NotificationService::class)
-        ->shouldReceive('notify')->once()
-        ->shouldReceive('sendPush')->once();
+        ->shouldReceive('notify')->once();
 
     $this->actingAs($worker)
         ->postJson("/api/bookings/{$booking->id}/status", ['status' => 'completed'])
@@ -69,14 +67,13 @@ it('worker can mark a booking as completed via /status endpoint', function () {
 
 it('increments the worker completed_jobs count when a booking is marked completed', function () {
     $booking = makeGapBooking('active');
-    $worker  = $booking->worker;
+    $worker = $booking->worker;
     $profile = $worker->workerProfile()->firstOrFail();
 
     $profile->update(['completed_jobs' => 0]);
 
     $this->mock(NotificationService::class)
-        ->shouldReceive('notify')->once()
-        ->shouldReceive('sendPush')->once();
+        ->shouldReceive('notify')->once();
 
     $this->actingAs($worker)
         ->postJson("/api/bookings/{$booking->id}/status", ['status' => 'completed'])
@@ -88,7 +85,7 @@ it('increments the worker completed_jobs count when a booking is marked complete
 
 it('returns 422 when status value is invalid on /status endpoint', function () {
     $booking = makeGapBooking('accepted');
-    $worker  = $booking->worker;
+    $worker = $booking->worker;
 
     $this->actingAs($worker)
         ->postJson("/api/bookings/{$booking->id}/status", ['status' => 'cancelled'])
@@ -98,7 +95,7 @@ it('returns 422 when status value is invalid on /status endpoint', function () {
 
 it('returns 403 when client tries to use /status endpoint', function () {
     $booking = makeGapBooking('accepted');
-    $client  = $booking->client;
+    $client = $booking->client;
 
     $this->actingAs($client)
         ->postJson("/api/bookings/{$booking->id}/status", ['status' => 'active'])
@@ -115,17 +112,16 @@ it('returns 401 when unauthenticated on /status endpoint', function () {
 
 it('client can submit a rating via POST /api/ratings', function () {
     $booking = makeGapBooking('completed');
-    $client  = $booking->client;
+    $client = $booking->client;
 
     $this->mock(NotificationService::class)
-        ->shouldReceive('notify')->once()
-        ->shouldReceive('sendPush')->once();
+        ->shouldReceive('notify')->once();
 
     $this->actingAs($client)
         ->postJson('/api/ratings', [
             'booking_id' => $booking->id,
-            'score'      => 5,
-            'comment'    => 'Very professional!',
+            'score' => 5,
+            'comment' => 'Very professional!',
         ])
         ->assertStatus(201)
         ->assertJsonPath('success', true)
@@ -144,25 +140,25 @@ it('returns 422 when booking_id is missing on /api/ratings', function () {
 
 it('returns 422 when rating a non-completed booking via /api/ratings', function () {
     $booking = makeGapBooking('pending');
-    $client  = $booking->client;
+    $client = $booking->client;
 
     $this->actingAs($client)
         ->postJson('/api/ratings', [
             'booking_id' => $booking->id,
-            'score'      => 4,
+            'score' => 4,
         ])
         ->assertStatus(422);
 });
 
 it('comment max:300 is enforced on /api/ratings', function () {
     $booking = makeGapBooking('completed');
-    $client  = $booking->client;
+    $client = $booking->client;
 
     $this->actingAs($client)
         ->postJson('/api/ratings', [
             'booking_id' => $booking->id,
-            'score'      => 5,
-            'comment'    => str_repeat('a', 301),
+            'score' => 5,
+            'comment' => str_repeat('a', 301),
         ])
         ->assertStatus(422)
         ->assertJsonValidationErrors(['comment']);
@@ -178,14 +174,14 @@ it('returns 401 when unauthenticated on /api/ratings', function () {
 
 it('location alias endpoint works the same as /tracking/update', function () {
     $booking = makeGapBooking('active');
-    $worker  = $booking->worker;
+    $worker = $booking->worker;
     $booking->update(['is_worker_tracking' => true]);
 
     $this->actingAs($worker)
         ->postJson("/api/bookings/{$booking->id}/tracking/location", [
-            'latitude'  => 9.9530,
+            'latitude' => 9.9530,
             'longitude' => 124.3660,
-            'accuracy'  => 5.2,
+            'accuracy' => 5.2,
         ])
         ->assertStatus(200)
         ->assertJsonPath('success', true)
@@ -194,12 +190,12 @@ it('location alias endpoint works the same as /tracking/update', function () {
 
 it('location alias returns 422 when tracking not started', function () {
     $booking = makeGapBooking('active');
-    $worker  = $booking->worker;
+    $worker = $booking->worker;
     // is_worker_tracking is false by default
 
     $this->actingAs($worker)
         ->postJson("/api/bookings/{$booking->id}/tracking/location", [
-            'latitude'  => 9.9530,
+            'latitude' => 9.9530,
             'longitude' => 124.3660,
         ])
         ->assertStatus(422);
@@ -214,7 +210,7 @@ it('returns 401 when unauthenticated on /tracking/location', function () {
 // ══════════════════════════════════════════════════════════════════════════════
 
 it('admin can suspend a user via toggle-status endpoint', function () {
-    $admin  = makeGapAdmin();
+    $admin = makeGapAdmin();
     $client = makeBookingClient();
 
     $this->actingAs($admin)
@@ -231,7 +227,7 @@ it('admin can suspend a user via toggle-status endpoint', function () {
 });
 
 it('admin can reactivate a user via toggle-status endpoint', function () {
-    $admin  = makeGapAdmin();
+    $admin = makeGapAdmin();
     $client = User::factory()->create(['role' => 'client', 'is_active' => false]);
 
     $this->actingAs($admin)
@@ -244,7 +240,7 @@ it('admin can reactivate a user via toggle-status endpoint', function () {
 });
 
 it('toggle-status requires reason when action is suspend', function () {
-    $admin  = makeGapAdmin();
+    $admin = makeGapAdmin();
     $client = makeBookingClient();
 
     $this->actingAs($admin)
@@ -257,7 +253,7 @@ it('toggle-status requires reason when action is suspend', function () {
 });
 
 it('toggle-status writes an audit log entry', function () {
-    $admin  = makeGapAdmin();
+    $admin = makeGapAdmin();
     $client = makeBookingClient();
 
     $this->actingAs($admin)
@@ -267,10 +263,10 @@ it('toggle-status writes an audit log entry', function () {
         ]);
 
     $this->assertDatabaseHas('admin_audit_logs', [
-        'admin_id'    => $admin->id,
-        'action'      => 'user_suspend',
+        'admin_id' => $admin->id,
+        'action' => 'user_suspend',
         'target_type' => 'User',
-        'target_id'   => $client->id,
+        'target_id' => $client->id,
     ]);
 });
 
@@ -287,7 +283,7 @@ it('returns 422 when admin tries to toggle-status their own account', function (
 });
 
 it('returns 422 for invalid action on toggle-status', function () {
-    $admin  = makeGapAdmin();
+    $admin = makeGapAdmin();
     $client = makeBookingClient();
 
     $this->actingAs($admin)

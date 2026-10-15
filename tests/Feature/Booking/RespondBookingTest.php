@@ -11,15 +11,15 @@ uses(RefreshDatabase::class);
 
 function makeRespondBooking(string $status = 'pending'): Booking
 {
-    $client   = makeBookingClient();
-    $worker   = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $category = ServiceCategory::factory()->create();
 
     return Booking::factory()->create([
-        'client_id'           => $client->id,
-        'worker_id'           => $worker->id,
+        'client_id' => $client->id,
+        'worker_id' => $worker->id,
         'service_category_id' => $category->id,
-        'status'              => $status,
+        'status' => $status,
     ]);
 }
 
@@ -29,11 +29,10 @@ function makeRespondBooking(string $status = 'pending'): Booking
 
 it('worker can accept a booking via respond endpoint', function () {
     $booking = makeRespondBooking('pending');
-    $worker  = $booking->worker;
+    $worker = $booking->worker;
 
     $this->mock(NotificationService::class)
-        ->shouldReceive('notify')->once()
-        ->shouldReceive('sendPush')->once();
+        ->shouldReceive('notify')->once();
 
     $this->actingAs($worker)
         ->postJson("/api/bookings/{$booking->id}/respond", ['action' => 'accept'])
@@ -47,11 +46,10 @@ it('worker can accept a booking via respond endpoint', function () {
 
 it('worker can decline a booking via respond endpoint', function () {
     $booking = makeRespondBooking('pending');
-    $worker  = $booking->worker;
+    $worker = $booking->worker;
 
     $this->mock(NotificationService::class)
-        ->shouldReceive('notify')->once()
-        ->shouldReceive('sendPush')->once();
+        ->shouldReceive('notify')->once();
 
     $this->actingAs($worker)
         ->postJson("/api/bookings/{$booking->id}/respond", [
@@ -68,7 +66,7 @@ it('worker can decline a booking via respond endpoint', function () {
 
 it('returns 422 when action is missing', function () {
     $booking = makeRespondBooking('pending');
-    $worker  = $booking->worker;
+    $worker = $booking->worker;
 
     $this->actingAs($worker)
         ->postJson("/api/bookings/{$booking->id}/respond", [])
@@ -78,7 +76,7 @@ it('returns 422 when action is missing', function () {
 
 it('returns 422 when action is invalid', function () {
     $booking = makeRespondBooking('pending');
-    $worker  = $booking->worker;
+    $worker = $booking->worker;
 
     $this->actingAs($worker)
         ->postJson("/api/bookings/{$booking->id}/respond", ['action' => 'ignore'])
@@ -88,7 +86,7 @@ it('returns 422 when action is invalid', function () {
 
 it('returns 422 when trying to respond to an already-accepted booking', function () {
     $booking = makeRespondBooking('accepted');
-    $worker  = $booking->worker;
+    $worker = $booking->worker;
 
     $this->actingAs($worker)
         ->postJson("/api/bookings/{$booking->id}/respond", ['action' => 'accept'])
@@ -96,8 +94,8 @@ it('returns 422 when trying to respond to an already-accepted booking', function
 });
 
 it('returns 403 when a different worker tries to respond', function () {
-    $booking       = makeRespondBooking('pending');
-    $otherWorker   = makeApprovedBookingWorker();
+    $booking = makeRespondBooking('pending');
+    $otherWorker = makeApprovedBookingWorker();
 
     $this->actingAs($otherWorker)
         ->postJson("/api/bookings/{$booking->id}/respond", ['action' => 'accept'])
@@ -106,7 +104,7 @@ it('returns 403 when a different worker tries to respond', function () {
 
 it('returns 403 when a client tries to use respond endpoint', function () {
     $booking = makeRespondBooking('pending');
-    $client  = makeBookingClient();
+    $client = makeBookingClient();
 
     $this->actingAs($client)
         ->postJson("/api/bookings/{$booking->id}/respond", ['action' => 'accept'])

@@ -24,7 +24,7 @@ class BookingService
             'status' => 'pending',
         ]);
 
-        $booking->load(['worker.barangay', 'serviceCategory']);
+        $booking->load(['worker.barangay', 'worker.workerProfile', 'serviceCategory']);
 
         $title = 'New Booking Request';
         $body = "You have received booking request {$booking->booking_code}.";
@@ -36,12 +36,6 @@ class BookingService
             $body,
             'booking_created',
             ['booking_id' => $booking->id],
-        );
-        $this->notifications->sendPush(
-            $booking->worker,
-            $title,
-            $body,
-            $notificationData + ['type' => 'booking_created'],
         );
 
         return $booking;
@@ -64,7 +58,12 @@ class BookingService
 
     public function list(User $user, ?string $status): LengthAwarePaginator
     {
-        $query = Booking::with(['client.barangay', 'worker.barangay', 'serviceCategory'])
+        $query = Booking::with([
+            'client.barangay',
+            'worker.barangay',
+            'worker.workerProfile:id,user_id',
+            'serviceCategory',
+        ])
             ->orderByDesc('created_at');
 
         if ($user->role === 'client') {
@@ -82,7 +81,12 @@ class BookingService
 
     public function find(int $id): ?Booking
     {
-        return Booking::with(['client.barangay', 'worker.barangay', 'serviceCategory'])->find($id);
+        return Booking::with([
+            'client.barangay',
+            'worker.barangay',
+            'worker.workerProfile:id,user_id',
+            'serviceCategory',
+        ])->find($id);
     }
 
     public function accept(Booking $booking): JsonResponse|Booking
@@ -101,13 +105,6 @@ class BookingService
             "Your booking {$fresh->booking_code} has been accepted.",
             'booking_accepted',
             ['booking_id' => $fresh->id],
-        );
-
-        $this->notifications->sendPush(
-            $fresh->client,
-            'Booking Accepted',
-            "Your booking {$fresh->booking_code} has been accepted.",
-            ['booking_id' => (string) $fresh->id, 'type' => 'booking_accepted'],
         );
 
         return $fresh;
@@ -129,13 +126,6 @@ class BookingService
             "Your booking {$fresh->booking_code} has been declined.",
             'booking_declined',
             ['booking_id' => $fresh->id],
-        );
-
-        $this->notifications->sendPush(
-            $fresh->client,
-            'Booking Declined',
-            "Your booking {$fresh->booking_code} has been declined.",
-            ['booking_id' => (string) $fresh->id, 'type' => 'booking_declined'],
         );
 
         return $fresh;
@@ -163,13 +153,6 @@ class BookingService
             ['booking_id' => $fresh->id],
         );
 
-        $this->notifications->sendPush(
-            $fresh->worker,
-            'Booking Cancelled',
-            "Booking {$fresh->booking_code} has been cancelled by the client.",
-            ['booking_id' => (string) $fresh->id, 'type' => 'booking_cancelled'],
-        );
-
         return $fresh;
     }
 
@@ -188,12 +171,6 @@ class BookingService
             "The worker has started booking {$fresh->booking_code}.",
             'booking_started',
             ['booking_id' => $fresh->id],
-        );
-        $this->notifications->sendPush(
-            $fresh->client,
-            'Job Started',
-            "The worker has started booking {$fresh->booking_code}.",
-            ['booking_id' => (string) $fresh->id, 'type' => 'booking_started'],
         );
 
         return $fresh;
@@ -227,13 +204,6 @@ class BookingService
             ['booking_id' => $fresh->id],
         );
 
-        $this->notifications->sendPush(
-            $fresh->client,
-            'Booking Completed',
-            "Your booking {$fresh->booking_code} has been completed.",
-            ['booking_id' => (string) $fresh->id, 'type' => 'booking_completed'],
-        );
-
         return $fresh;
     }
 
@@ -253,13 +223,6 @@ class BookingService
             "Booking {$fresh->booking_code} has been rescheduled.",
             'booking_rescheduled',
             ['booking_id' => $fresh->id],
-        );
-
-        $this->notifications->sendPush(
-            $fresh->worker,
-            'Booking Rescheduled',
-            "Booking {$fresh->booking_code} has been rescheduled.",
-            ['booking_id' => (string) $fresh->id, 'type' => 'booking_rescheduled'],
         );
 
         return $fresh;
@@ -298,12 +261,6 @@ class BookingService
         foreach ([$booking->client, $booking->worker] as $user) {
             $data = ['booking_id' => $booking->id];
             $this->notifications->notify($user, $title, $body, $type, $data);
-            $this->notifications->sendPush(
-                $user,
-                $title,
-                $body,
-                ['booking_id' => (string) $booking->id, 'type' => $type],
-            );
         }
     }
 }

@@ -25,9 +25,7 @@ it('allows an admin to create a job post for a worker and notifies the worker', 
             && $type === 'job_post_created'
             && $data['job_post_id'] !== null
         )
-        ->andReturn(new HanapbuhayNotification())
-        ->shouldReceive('sendPush')
-        ->once();
+        ->andReturn(new HanapbuhayNotification());
 
     $this->actingAs($admin)
         ->postJson('/api/admin/posts', [
@@ -64,9 +62,7 @@ it('allows an admin to update a job post and notifies the worker', function () {
             && $type === 'job_post_updated'
             && $data['job_post_id'] === (string) $post->id
         )
-        ->andReturn(new HanapbuhayNotification())
-        ->shouldReceive('sendPush')
-        ->once();
+        ->andReturn(new HanapbuhayNotification());
 
     $this->actingAs($admin)
         ->putJson("/api/admin/posts/{$post->id}", [
@@ -101,9 +97,7 @@ it('notifies the worker when an admin permanently deletes a job post', function 
             && $body === 'No longer offered.'
             && $data['job_post_id'] === $post->id
         )
-        ->andReturn(new HanapbuhayNotification())
-        ->shouldReceive('sendPush')
-        ->once();
+        ->andReturn(new HanapbuhayNotification());
 
     $this->actingAs($admin)
         ->deleteJson("/api/admin/posts/{$post->id}", ['reason' => 'No longer offered.'])
@@ -133,9 +127,7 @@ it('bulk deletes selected job posts and notifies each worker', function () {
             && $type === 'job_post_removed'
             && $body === 'Bulk removal reason.'
         )
-        ->andReturn(new HanapbuhayNotification())
-        ->shouldReceive('sendPush')
-        ->twice();
+        ->andReturn(new HanapbuhayNotification());
 
     $this->actingAs($admin)
         ->deleteJson('/api/admin/posts/bulk', [

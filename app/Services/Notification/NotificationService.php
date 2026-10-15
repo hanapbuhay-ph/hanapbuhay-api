@@ -16,20 +16,21 @@ use Kreait\Firebase\Messaging\Notification;
 class NotificationService
 {
     /**
-     * Create an in-app notification record and, for booking updates, queue an email.
+     * Create an in-app notification and deliver it to opted-in registered devices.
+     * Booking updates also queue an email when the user has email notifications enabled.
      */
     public function notify(User $user, string $title, string $body, string $type, array $data = []): ?HanapbuhayNotification
     {
-        if (!$this->categoryEnabled($user, $type)) {
+        if (! $this->categoryEnabled($user, $type)) {
             return null;
         }
 
         $notification = HanapbuhayNotification::create([
             'user_id' => $user->id,
-            'title'   => $title,
-            'body'    => $body,
-            'type'    => $type,
-            'data'    => $data ?: null,
+            'title' => $title,
+            'body' => $body,
+            'type' => $type,
+            'data' => $data ?: null,
             'is_read' => false,
         ]);
 
@@ -47,6 +48,8 @@ class NotificationService
             }
         }
 
+        $this->sendPush($user, $title, $body, array_merge($data, ['type' => $type]));
+
         return $notification;
     }
 
@@ -56,7 +59,7 @@ class NotificationService
     public function sendPush(User $user, string $title, string $body = '', array $data = []): void
     {
         $type = (string) ($data['type'] ?? '');
-        if (!($user->notify_push ?? true) || !$this->categoryEnabled($user, $type)) {
+        if (! ($user->notify_push ?? true) || ! $this->categoryEnabled($user, $type)) {
             return;
         }
 
@@ -75,15 +78,23 @@ class NotificationService
                 'user_id' => $user->id,
                 'error' => $exception->getMessage(),
             ]);
+
             return;
         }
 
         foreach ($tokens as $token) {
             try {
+                $messageData = [];
+                foreach ($data as $key => $value) {
+                    if (is_scalar($value)) {
+                        $messageData[(string) $key] = (string) $value;
+                    }
+                }
+
                 $message = CloudMessage::new()
                     ->withToken($token->fcm_token)
                     ->withNotification($notification)
-                    ->withData($data);
+                    ->withData($messageData);
 
                 $messaging->send($message);
             } catch (MessagingException $exception) {

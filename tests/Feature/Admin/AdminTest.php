@@ -130,12 +130,7 @@ it('admin approves a worker verification', function () use ($makeAdmin) {
     // Mock NotificationService so no real FCM call is made
     $this->mock(NotificationService::class)
         ->shouldReceive('notify')
-        ->once()
-        ->shouldReceive('sendPush')
-        ->once()
-        ->withArgs(function (User $user, string $title) use ($worker): bool {
-            return $user->id === $worker->id && $title === 'Verification Approved';
-        });
+        ->once();
 
     $this->actingAs($admin)
         ->postJson("/api/admin/verifications/{$profile->id}/review", [
@@ -175,12 +170,7 @@ it('admin rejects a worker verification', function () use ($makeAdmin) {
 
     $this->mock(NotificationService::class)
         ->shouldReceive('notify')
-        ->once()
-        ->shouldReceive('sendPush')
-        ->once()
-        ->withArgs(function (User $user, string $title) use ($worker): bool {
-            return $user->id === $worker->id && $title === 'Verification Rejected';
-        });
+        ->once();
 
     $this->actingAs($admin)
         ->postJson("/api/admin/verifications/{$profile->id}/review", [

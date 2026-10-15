@@ -8,7 +8,8 @@ use Illuminate\Console\Command;
 
 class NotifyTodayBookings extends Command
 {
-    protected $signature   = 'bookings:notify-today';
+    protected $signature = 'bookings:notify-today';
+
     protected $description = 'Send push notifications to clients and workers for bookings scheduled today.';
 
     public function handle(NotificationService $notifications): void
@@ -22,15 +23,9 @@ class NotifyTodayBookings extends Command
 
         foreach ($bookings as $booking) {
             $service = $booking->serviceCategory?->name ?? 'your service';
-            $time    = $booking->scheduled_at->format('g:i A');
+            $time = $booking->scheduled_at->format('g:i A');
 
             if ($booking->client) {
-                $notifications->sendPush(
-                    $booking->client,
-                    'Booking Today',
-                    "Your {$service} booking is scheduled today at {$time}.",
-                    ['booking_id' => (string) $booking->id, 'type' => 'booking_today'],
-                );
                 $notifications->notify(
                     $booking->client,
                     'Booking Today',
@@ -41,12 +36,6 @@ class NotifyTodayBookings extends Command
             }
 
             if ($booking->worker) {
-                $notifications->sendPush(
-                    $booking->worker,
-                    'Job Today',
-                    "You have a {$service} job scheduled today at {$time}.",
-                    ['booking_id' => (string) $booking->id, 'type' => 'booking_today'],
-                );
                 $notifications->notify(
                     $booking->worker,
                     'Job Today',
