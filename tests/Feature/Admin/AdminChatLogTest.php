@@ -56,6 +56,7 @@ it('admin sees one conversation per client-worker pair across bookings', functio
         ->assertJsonPath('data.conversations.0.worker.id', $worker->id)
         ->assertJsonPath('data.conversations.0.messages_count', 2)
         ->assertJsonPath('data.conversations.0.bookings_count', 2)
+        ->assertJsonPath('data.conversations.0.unread_count', 1)
         ->assertJsonStructure(['data' => ['conversations', 'pagination']]);
 
     $this->actingAs($admin)

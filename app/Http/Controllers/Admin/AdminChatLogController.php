@@ -32,7 +32,7 @@ class AdminChatLogController extends Controller
             ->selectRaw('MAX(messages.created_at) as last_message_at')
             ->selectRaw('COUNT(messages.id) as messages_count')
             ->selectRaw('COUNT(DISTINCT bookings.id) as bookings_count')
-            ->selectRaw('SUM(CASE WHEN messages.is_read = 0 THEN 1 ELSE 0 END) as unread_count')
+            ->selectRaw('SUM(CASE WHEN messages.is_read THEN 0 ELSE 1 END) as unread_count')
             ->groupBy(
                 'bookings.client_id',
                 'bookings.worker_id',
