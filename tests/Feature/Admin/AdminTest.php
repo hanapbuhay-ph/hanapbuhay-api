@@ -278,6 +278,29 @@ it('ordinary admins cannot update, suspend, or delete the super admin account', 
         ->and(Hash::check('OriginalPassword123', $superAdmin->password))->toBeTrue();
 });
 
+it('only super admins can delete users', function () use ($makeAdmin) {
+    $admin = $makeAdmin();
+    $superAdmin = User::factory()->create([
+        'role' => 'super_admin',
+        'email' => User::SUPER_ADMIN_EMAIL,
+    ]);
+    $target = User::factory()->create(['role' => 'client']);
+
+    $this->actingAs($admin)
+        ->deleteJson("/api/admin/users/{$target->id}")
+        ->assertForbidden()
+        ->assertJsonPath('message', 'Only the super admin can delete users.');
+
+    expect(User::withTrashed()->find($target->id))->not->toBeNull();
+
+    $this->actingAs($superAdmin)
+        ->deleteJson("/api/admin/users/{$target->id}")
+        ->assertOk()
+        ->assertJsonPath('success', true);
+
+    expect(User::withTrashed()->find($target->id))->toBeNull();
+});
+
 it('admins cannot assign the super admin role through user management', function () use ($makeAdmin) {
     $admin = $makeAdmin();
     $user = User::factory()->create(['role' => 'client']);
@@ -564,6 +587,10 @@ it('requires a barangay when admin creates a user', function () use ($makeAdmin)
 
 it('admin can update and permanently delete a user and its owned data', function () use ($makeAdmin) {
     $admin = $makeAdmin();
+    $superAdmin = User::factory()->create([
+        'role' => 'super_admin',
+        'email' => User::SUPER_ADMIN_EMAIL,
+    ]);
     Storage::fake('public');
 
     $photoPath = 'profile-photos/user-avatar.jpg';
@@ -590,7 +617,7 @@ it('admin can update and permanently delete a user and its owned data', function
         ->assertStatus(200)
         ->assertJsonPath('data.name', 'Updated User');
 
-    $this->actingAs($admin)
+    $this->actingAs($superAdmin)
         ->deleteJson("/api/admin/users/{$user->id}")
         ->assertStatus(200)
         ->assertJsonPath('success', true);
