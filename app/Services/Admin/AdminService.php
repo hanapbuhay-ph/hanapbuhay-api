@@ -438,6 +438,10 @@ class AdminService
 
         $user = User::findOrFail($userId);
         $this->assertSuperAdminManageableBy($user, $admin);
+        if (! $admin->isSuperAdmin()) {
+            throw new BusinessRuleException('Only the super admin can delete users.', 403);
+        }
+
         $userIdForEvent = (int) $user->id;
         $userDetails = [
             'name' => $user->name,
