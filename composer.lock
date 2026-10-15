@@ -5409,16 +5409,16 @@
         },
         {
             "name": "rize/uri-template",
-            "version": "0.4.2",
+            "version": "0.4.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/rize/UriTemplate.git",
-                "reference": "7ad22944daede547b4542e1c977ec4a81aa20832"
+                "reference": "abb53c8b73a5b6c24e11f49036ab842f560cad33"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/rize/UriTemplate/zipball/7ad22944daede547b4542e1c977ec4a81aa20832",
-                "reference": "7ad22944daede547b4542e1c977ec4a81aa20832",
+                "url": "https://api.github.com/repos/rize/UriTemplate/zipball/abb53c8b73a5b6c24e11f49036ab842f560cad33",
+                "reference": "abb53c8b73a5b6c24e11f49036ab842f560cad33",
                 "shasum": ""
             },
             "require": {
@@ -5453,7 +5453,7 @@
             ],
             "support": {
                 "issues": "https://github.com/rize/UriTemplate/issues",
-                "source": "https://github.com/rize/UriTemplate/tree/0.4.2"
+                "source": "https://github.com/rize/UriTemplate/tree/0.4.1"
             },
             "funding": [
                 {
@@ -5469,7 +5469,7 @@
                     "type": "open_collective"
                 }
             ],
-            "time": "2026-05-07T15:30:40+00:00"
+            "time": "2025-12-02T15:19:04+00:00"
         },
         {
             "name": "rybakit/msgpack",
