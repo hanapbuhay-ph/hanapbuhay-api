@@ -35,12 +35,16 @@ return [
         ],
     ],
 
+    'account_actions' => [
+        'scheduler_token' => env('ACCOUNT_ACTIONS_SCHEDULER_TOKEN'),
+    ],
+
     'google' => [
-        'client_id'     => env('GOOGLE_CLIENT_ID'),
+        'client_id' => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),
         // redirect is required by Socialite's driver boot but unused in
         // the mobile token flow — set to a non-routable placeholder.
-        'redirect'      => env('GOOGLE_REDIRECT_URI', 'http://localhost'),
+        'redirect' => env('GOOGLE_REDIRECT_URI', 'http://localhost'),
     ],
 
 ];

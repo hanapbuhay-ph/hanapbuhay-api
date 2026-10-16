@@ -338,6 +338,7 @@ class AdminUserController extends Controller
                 'user_id' => (int) $id,
                 'action' => 'delete',
                 'scheduled_for' => $action->scheduled_for->toIso8601String(),
+                'email_sent' => (bool) $action->email_delivery_succeeded,
             ],
         ]);
     }
@@ -476,6 +477,7 @@ class AdminUserController extends Controller
                     'is_active' => $user->is_active,
                     'action' => 'suspend',
                     'scheduled_for' => $scheduledAction->scheduled_for->toIso8601String(),
+                    'email_sent' => (bool) $scheduledAction->email_delivery_succeeded,
                 ],
             ]);
         }

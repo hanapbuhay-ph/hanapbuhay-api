@@ -10,6 +10,7 @@ use App\Models\UserAccountAction;
 use App\Services\Notification\NotificationService;
 use App\Services\SecurityEventLogger;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 class AdminUserActionService
@@ -170,9 +171,21 @@ class AdminUserActionService
             ],
         );
 
-        Mail::to($accountAction->target_email)->queue(
-            (new NotificationEmail($title, $body))->afterCommit(),
-        );
+        $emailDeliverySucceeded = true;
+        try {
+            Mail::to($accountAction->target_email)->sendNow(
+                new NotificationEmail($title, $body),
+            );
+        } catch (\Throwable $exception) {
+            $emailDeliverySucceeded = false;
+            Log::error('Failed to send scheduled user account action email.', [
+                'account_action_id' => $accountAction->id,
+                'target_user_id' => $accountAction->target_user_id,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+
+        $accountAction->setAttribute('email_delivery_succeeded', $emailDeliverySucceeded);
 
         return $accountAction;
     }

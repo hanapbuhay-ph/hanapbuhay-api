@@ -302,13 +302,14 @@ it('only super admins can delete users', function () use ($makeAdmin) {
         ->deleteJson("/api/admin/users/{$target->id}", ['reason' => 'Repeated policy violations'])
         ->assertOk()
         ->assertJsonPath('success', true)
-        ->assertJsonPath('data.action', 'delete');
+        ->assertJsonPath('data.action', 'delete')
+        ->assertJsonPath('data.email_sent', true);
 
     expect(User::withTrashed()->find($target->id))->not->toBeNull()
         ->and(UserAccountAction::query()->where('target_user_id', $target->id)->value('status'))->toBe('pending')
         ->and(HanapbuhayNotification::query()->where('user_id', $target->id)->value('body'))
         ->toContain('Repeated policy violations');
-    Mail::assertQueued(NotificationEmail::class, fn (NotificationEmail $mail): bool => str_contains($mail->notificationBody, 'Repeated policy violations'));
+    Mail::assertSent(NotificationEmail::class, fn (NotificationEmail $mail): bool => str_contains($mail->notificationBody, 'Repeated policy violations'));
 });
 
 it('admins cannot assign the super admin role through user management', function () use ($makeAdmin) {
@@ -734,14 +735,15 @@ it('admin schedules suspension and notifies the account owner with the reason', 
         ])
         ->assertOk()
         ->assertJsonPath('data.is_active', true)
-        ->assertJsonPath('data.action', 'suspend');
+        ->assertJsonPath('data.action', 'suspend')
+        ->assertJsonPath('data.email_sent', true);
 
     expect($client->fresh()->is_active)->toBeTrue()
         ->and(HanapbuhayNotification::query()->where('user_id', $client->id)->value('body'))
         ->toContain('Repeated policy violations')
         ->and(UserAccountAction::query()->where('target_user_id', $client->id)->value('scheduled_for'))
         ->not->toBeNull();
-    Mail::assertQueued(NotificationEmail::class, fn (NotificationEmail $mail): bool => str_contains($mail->notificationBody, 'Repeated policy violations'));
+    Mail::assertSent(NotificationEmail::class, fn (NotificationEmail $mail): bool => str_contains($mail->notificationBody, 'Repeated policy violations'));
 
     $this->travel(25)->hours();
     $this->artisan('users:process-scheduled-account-actions')->assertSuccessful();
@@ -758,6 +760,22 @@ it('does not allow account status changes through the general user update endpoi
         ->assertJsonValidationErrors(['is_active']);
 
     expect($client->fresh()->is_active)->toBeTrue();
+});
+
+it('requires the scheduler token to process due account actions', function () {
+    config(['services.account_actions.scheduler_token' => 'scheduler-secret']);
+
+    $this->postJson('/api/internal/scheduled-user-account-actions/process')
+        ->assertUnauthorized();
+});
+
+it('runs the account-action processor with the configured scheduler token', function () {
+    config(['services.account_actions.scheduler_token' => 'scheduler-secret']);
+
+    $this->withToken('scheduler-secret')
+        ->postJson('/api/internal/scheduled-user-account-actions/process')
+        ->assertOk()
+        ->assertJsonPath('success', true);
 });
 
 it('admin toggles the same user active again', function () use ($makeAdmin) {

@@ -21,6 +21,7 @@ use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Booking\BookingController;
 use App\Http\Controllers\Client\ClientController;
 use App\Http\Controllers\Feed\FeedController;
+use App\Http\Controllers\Internal\ProcessScheduledUserAccountActionsController;
 use App\Http\Controllers\JobPost\JobPostController;
 use App\Http\Controllers\JobPost\JobPostImageController;
 use App\Http\Controllers\MediaController;
@@ -47,6 +48,8 @@ Route::get('service-categories', [PublicController::class, 'serviceCategories'])
 Route::get('media/private', [MediaController::class, 'show'])
     ->middleware(['signed', 'throttle:60,1'])
     ->name('media.private');
+Route::post('internal/scheduled-user-account-actions/process', ProcessScheduledUserAccountActionsController::class)
+    ->middleware('throttle:12,1');
 
 Route::prefix('auth')->group(function () {
     Route::post('register', [RegisterController::class, 'register']);
