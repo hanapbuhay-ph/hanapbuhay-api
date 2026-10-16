@@ -119,6 +119,12 @@ class User extends Authenticatable
         return $this->hasMany(HanapbuhayNotification::class);
     }
 
+    public function pendingAdminActions(): HasMany
+    {
+        return $this->hasMany(UserAccountAction::class, 'target_user_id')
+            ->where('status', 'pending');
+    }
+
     public function auditLogs(): HasMany
     {
         return $this->hasMany(AdminAuditLog::class, 'admin_id');

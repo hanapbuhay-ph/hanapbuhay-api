@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Services\Media\MediaStorageService;
 use App\Models\Booking;
 use App\Models\Message;
 use App\Models\User;
+use App\Services\Media\MediaStorageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -55,6 +55,7 @@ class AdminChatLogController extends Controller
         $paginator = $query->orderByDesc('last_message_at')->paginate(15);
         $conversations = collect($paginator->items())->map(function (object $pair): array {
             $lastMessage = Message::query()
+                ->select(['id', 'booking_id', 'attachment_path', 'created_at'])
                 ->whereHas('booking', fn ($bookingQuery) => $bookingQuery
                     ->where('client_id', $pair->client_id)
                     ->where('worker_id', $pair->worker_id))
@@ -74,9 +75,7 @@ class AdminChatLogController extends Controller
                     'name' => $pair->worker_name,
                     'profile_photo_url' => self::profilePhotoUrl($pair->worker_profile_photo_path),
                 ],
-                'last_message' => filled($lastMessage?->content)
-                    ? $lastMessage->content
-                    : ($lastMessage?->attachment_path ? '[Attachment]' : null),
+                'last_message_has_attachment' => (bool) $lastMessage?->attachment_path,
                 'last_message_at' => $lastMessage?->created_at?->toIso8601String(),
                 'messages_count' => (int) $pair->messages_count,
                 'bookings_count' => (int) $pair->bookings_count,
@@ -113,7 +112,8 @@ class AdminChatLogController extends Controller
         }
 
         $paginator = Message::query()
-            ->with(['sender:id,name,profile_photo_path', 'booking:id,booking_code'])
+            ->select(['id', 'booking_id', 'sender_id', 'attachment_path', 'is_read', 'created_at'])
+            ->with('booking:id,booking_code')
             ->whereIn('booking_id', $bookings->pluck('id'))
             ->orderBy('created_at')
             ->orderBy('id')
@@ -122,14 +122,9 @@ class AdminChatLogController extends Controller
         $messages = $paginator->getCollection()->map(fn (Message $message): array => [
             'id' => $message->id,
             'booking_code' => $message->booking?->booking_code,
-            'sender_id' => $message->sender_id,
-            'sender_name' => $message->sender?->name,
-            'sender_profile_photo_url' => self::profilePhotoUrl($message->sender?->profile_photo_path),
             'sender_role' => $message->sender_id === $clientId ? 'client' : 'worker',
-            'content' => $message->content,
-            'attachment_url' => app(MediaStorageService::class)->privateUrl($message->attachment_path),
+            'has_attachment' => (bool) $message->attachment_path,
             'is_read' => $message->is_read,
-            'is_flagged' => false,
             'created_at' => $message->created_at?->toIso8601String(),
         ])->values();
 
@@ -168,20 +163,17 @@ class AdminChatLogController extends Controller
             return response()->json(['success' => false, 'message' => 'Booking not found.'], 404);
         }
 
-        $paginator = Message::with('sender:id,name')
+        $paginator = Message::query()
+            ->select(['id', 'booking_id', 'sender_id', 'attachment_path', 'is_read', 'created_at'])
             ->where('booking_id', $booking->id)
             ->orderBy('created_at')
             ->paginate(30);
 
         $messages = $paginator->getCollection()->map(fn (Message $message): array => [
             'id' => $message->id,
-            'sender_id' => $message->sender_id,
-            'sender_name' => $message->sender?->name,
             'sender_role' => $message->sender_id === $booking->client_id ? 'client' : 'worker',
-            'content' => $message->content,
-            'attachment_url' => app(MediaStorageService::class)->privateUrl($message->attachment_path),
+            'has_attachment' => (bool) $message->attachment_path,
             'is_read' => $message->is_read,
-            'is_flagged' => false,
             'created_at' => $message->created_at?->toISOString(),
         ])->values();
 

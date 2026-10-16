@@ -1,19 +1,23 @@
 <?php
 
+use App\Mail\NotificationEmail;
 use App\Models\AdminAuditLog;
 use App\Models\Barangay;
 use App\Models\Booking;
+use App\Models\HanapbuhayNotification;
 use App\Models\JobPost;
 use App\Models\RatingReview;
 use App\Models\Report;
 use App\Models\ServiceCategory;
 use App\Models\User;
+use App\Models\UserAccountAction;
 use App\Models\VerificationDocument;
 use App\Models\VerificationHistory;
 use App\Models\WorkerProfile;
 use App\Services\Notification\NotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 
 uses(RefreshDatabase::class);
@@ -266,7 +270,7 @@ it('ordinary admins cannot update, suspend, or delete the super admin account', 
         ->assertForbidden();
 
     $this->actingAs($admin)
-        ->deleteJson("/api/admin/users/{$superAdmin->id}")
+        ->deleteJson("/api/admin/users/{$superAdmin->id}", ['reason' => 'Protected account test'])
         ->assertForbidden();
 
     expect(AdminAuditLog::where('action', 'protected_account_change_denied')->count())->toBe(3)
@@ -279,6 +283,7 @@ it('ordinary admins cannot update, suspend, or delete the super admin account', 
 });
 
 it('only super admins can delete users', function () use ($makeAdmin) {
+    Mail::fake();
     $admin = $makeAdmin();
     $superAdmin = User::factory()->create([
         'role' => 'super_admin',
@@ -287,18 +292,24 @@ it('only super admins can delete users', function () use ($makeAdmin) {
     $target = User::factory()->create(['role' => 'client']);
 
     $this->actingAs($admin)
-        ->deleteJson("/api/admin/users/{$target->id}")
+        ->deleteJson("/api/admin/users/{$target->id}", ['reason' => 'Policy violations'])
         ->assertForbidden()
         ->assertJsonPath('message', 'Only the super admin can delete users.');
 
     expect(User::withTrashed()->find($target->id))->not->toBeNull();
 
     $this->actingAs($superAdmin)
-        ->deleteJson("/api/admin/users/{$target->id}")
+        ->deleteJson("/api/admin/users/{$target->id}", ['reason' => 'Repeated policy violations'])
         ->assertOk()
-        ->assertJsonPath('success', true);
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('data.action', 'delete')
+        ->assertJsonPath('data.email_sent', true);
 
-    expect(User::withTrashed()->find($target->id))->toBeNull();
+    expect(User::withTrashed()->find($target->id))->not->toBeNull()
+        ->and(UserAccountAction::query()->where('target_user_id', $target->id)->value('status'))->toBe('pending')
+        ->and(HanapbuhayNotification::query()->where('user_id', $target->id)->value('body'))
+        ->toContain('Repeated policy violations');
+    Mail::assertSent(NotificationEmail::class, fn (NotificationEmail $mail): bool => str_contains($mail->notificationBody, 'Repeated policy violations'));
 });
 
 it('admins cannot assign the super admin role through user management', function () use ($makeAdmin) {
@@ -586,6 +597,7 @@ it('requires a barangay when admin creates a user', function () use ($makeAdmin)
 });
 
 it('admin can update and permanently delete a user and its owned data', function () use ($makeAdmin) {
+    Mail::fake();
     $admin = $makeAdmin();
     $superAdmin = User::factory()->create([
         'role' => 'super_admin',
@@ -612,15 +624,19 @@ it('admin can update and permanently delete a user and its owned data', function
     $this->actingAs($admin)
         ->patchJson("/api/admin/users/{$user->id}", [
             'name' => 'Updated User',
-            'is_active' => false,
         ])
         ->assertStatus(200)
         ->assertJsonPath('data.name', 'Updated User');
+    expect($user->fresh()->is_active)->toBeTrue();
 
     $this->actingAs($superAdmin)
-        ->deleteJson("/api/admin/users/{$user->id}")
+        ->deleteJson("/api/admin/users/{$user->id}", ['reason' => 'Account policy violation'])
         ->assertStatus(200)
         ->assertJsonPath('success', true);
+
+    expect(User::withTrashed()->find($user->id))->not->toBeNull();
+    $this->travel(25)->hours();
+    $this->artisan('users:process-scheduled-account-actions')->assertSuccessful();
 
     expect(User::withTrashed()->find($user->id))->toBeNull();
     $this->assertDatabaseMissing('worker_profiles', ['id' => $profile->id]);
@@ -691,21 +707,75 @@ it('admin cannot delete their own account', function () use ($makeAdmin) {
     $admin = $makeAdmin();
 
     $this->actingAs($admin)
-        ->deleteJson("/api/admin/users/{$admin->id}")
+        ->deleteJson("/api/admin/users/{$admin->id}", ['reason' => 'Self deletion test'])
         ->assertStatus(422)
         ->assertJsonPath('message', 'You cannot delete your own account.');
 });
 
-it('admin toggles a user inactive', function () use ($makeAdmin) {
+it('legacy status toggle does not immediately suspend users without a reason', function () use ($makeAdmin) {
     $admin = $makeAdmin();
     $client = User::factory()->create(['role' => 'client', 'is_active' => true]);
 
     $this->actingAs($admin)
         ->patchJson("/api/admin/users/{$client->id}/toggle-active")
-        ->assertStatus(200)
-        ->assertJsonPath('data.is_active', false);
+        ->assertStatus(422);
 
+    expect($client->fresh()->is_active)->toBeTrue();
+});
+
+it('admin schedules suspension and notifies the account owner with the reason', function () use ($makeAdmin) {
+    Mail::fake();
+    $admin = $makeAdmin();
+    $client = User::factory()->create(['role' => 'client', 'is_active' => true]);
+
+    $this->actingAs($admin)
+        ->postJson("/api/admin/users/{$client->id}/toggle-status", [
+            'action' => 'suspend',
+            'reason' => 'Repeated policy violations',
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.is_active', true)
+        ->assertJsonPath('data.action', 'suspend')
+        ->assertJsonPath('data.email_sent', true);
+
+    expect($client->fresh()->is_active)->toBeTrue()
+        ->and(HanapbuhayNotification::query()->where('user_id', $client->id)->value('body'))
+        ->toContain('Repeated policy violations')
+        ->and(UserAccountAction::query()->where('target_user_id', $client->id)->value('scheduled_for'))
+        ->not->toBeNull();
+    Mail::assertSent(NotificationEmail::class, fn (NotificationEmail $mail): bool => str_contains($mail->notificationBody, 'Repeated policy violations'));
+
+    $this->travel(25)->hours();
+    $this->artisan('users:process-scheduled-account-actions')->assertSuccessful();
     expect($client->fresh()->is_active)->toBeFalse();
+});
+
+it('does not allow account status changes through the general user update endpoint', function () use ($makeAdmin) {
+    $admin = $makeAdmin();
+    $client = User::factory()->create(['role' => 'client', 'is_active' => true]);
+
+    $this->actingAs($admin)
+        ->patchJson("/api/admin/users/{$client->id}", ['is_active' => false])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['is_active']);
+
+    expect($client->fresh()->is_active)->toBeTrue();
+});
+
+it('requires the scheduler token to process due account actions', function () {
+    config(['services.account_actions.scheduler_token' => 'scheduler-secret']);
+
+    $this->postJson('/api/internal/scheduled-user-account-actions/process')
+        ->assertUnauthorized();
+});
+
+it('runs the account-action processor with the configured scheduler token', function () {
+    config(['services.account_actions.scheduler_token' => 'scheduler-secret']);
+
+    $this->withToken('scheduler-secret')
+        ->postJson('/api/internal/scheduled-user-account-actions/process')
+        ->assertOk()
+        ->assertJsonPath('success', true);
 });
 
 it('admin toggles the same user active again', function () use ($makeAdmin) {

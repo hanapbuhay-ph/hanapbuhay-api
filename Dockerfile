@@ -51,4 +51,4 @@ RUN COMPOSER_ALLOW_SUPERUSER=1 composer install \
 
 EXPOSE 10000
 
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
+CMD ["sh", "-c", "php artisan migrate --force && exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf"]

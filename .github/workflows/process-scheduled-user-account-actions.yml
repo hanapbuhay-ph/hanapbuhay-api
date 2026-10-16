@@ -1,0 +1,28 @@
+name: Process scheduled user account actions
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  process-due-actions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger API processor
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          SCHEDULER_TOKEN: ${{ secrets.ACCOUNT_ACTIONS_SCHEDULER_TOKEN }}
+        run: |
+          set -eu
+          if [ -z "$API_BASE_URL" ] || [ -z "$SCHEDULER_TOKEN" ]; then
+            echo "Required repository secrets are not configured."
+            exit 1
+          fi
+          curl --fail-with-body \
+            --retry 3 \
+            --retry-all-errors \
+            --max-time 60 \
+            --request POST \
+            --header "Authorization: Bearer $SCHEDULER_TOKEN" \
+            "${API_BASE_URL%/}/api/internal/scheduled-user-account-actions/process"

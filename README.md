@@ -146,6 +146,25 @@ changes. After deploying application changes, run `php artisan queue:restart`
 and ensure your process manager starts the worker again. In local development,
 stop and start the worker after changing queued mail or notification code.
 
+### Scheduled account actions
+The API image runs outstanding migrations before starting the web server.
+Scheduled suspensions and deletions are processed by a GitHub Actions workflow
+every five minutes, so a separate Render Background Worker or Cron Job is not
+required. Set the same strong random value as `ACCOUNT_ACTIONS_SCHEDULER_TOKEN`
+in the API environment and the GitHub Actions repository secret of the same
+name. Also set the GitHub Actions repository secret `API_BASE_URL` to the
+deployed API origin (for example, `https://your-api.onrender.com`, without a
+trailing slash). Do not commit or share the scheduler token.
+
+```bash
+php artisan users:process-scheduled-account-actions
+```
+
+The command is safe to run repeatedly; only due, pending actions are applied.
+To run the processor on another host, send a `POST` request to
+`/api/internal/scheduled-user-account-actions/process` with the scheduler token
+as a Bearer token. The GitHub workflow uses this endpoint automatically.
+
 ### Soketi WebSocket server (required for live tracking and real-time messaging)
 ```bash
 # Install Soketi globally (one-time)

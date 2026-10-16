@@ -22,7 +22,7 @@ class ToggleUserStatusRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'action.in'       => 'Action must be suspend or reactivate.',
+            'action.in' => 'Action must be suspend or reactivate.',
             'reason.required_if' => 'A reason is required when suspending a user.',
         ];
     }

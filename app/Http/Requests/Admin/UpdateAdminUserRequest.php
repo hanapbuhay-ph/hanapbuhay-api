@@ -43,7 +43,7 @@ class UpdateAdminUserRequest extends FormRequest
             'mobile_number' => ['sometimes', 'nullable', 'string', new PhilippineMobileNumber],
             'role' => ['sometimes', Rule::in($assignableRoles)],
             'barangay_id' => ['sometimes', 'required', 'integer', 'exists:barangays,id'],
-            'is_active' => ['sometimes', 'boolean'],
+            'is_active' => ['prohibited'],
         ];
     }
 

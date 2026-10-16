@@ -13,15 +13,18 @@ use App\Models\Report;
 use App\Models\ReportReason;
 use App\Models\ServiceCategory;
 use App\Models\User;
+use App\Models\UserAccountAction;
 use App\Models\VerificationHistory;
 use App\Models\WorkerProfile;
 use App\Services\Media\MediaStorageService;
 use App\Services\Notification\NotificationService;
 use App\Services\SecurityEventLogger;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\LazyCollection;
 use Illuminate\Support\Str;
 
 class AdminService
@@ -183,6 +186,7 @@ class AdminService
             ->with([
                 'barangay:id,name',
                 'workerProfile:id,user_id',
+                'pendingAdminActions',
             ])
             ->orderByDesc('created_at');
 
@@ -430,46 +434,106 @@ class AdminService
         return $user->fresh()->load('barangay:id,name');
     }
 
-    public function deleteUser(int|string $userId, User $admin): void
+    public function processScheduledAccountAction(UserAccountAction $scheduledAction): void
     {
-        if ((int) $userId === $admin->id) {
-            throw new BusinessRuleException('You cannot delete your own account.');
-        }
+        $storagePaths = [];
+        $actionType = $scheduledAction->action;
+        $processed = DB::transaction(function () use ($scheduledAction, &$storagePaths): bool {
+            $action = UserAccountAction::query()
+                ->lockForUpdate()
+                ->findOrFail($scheduledAction->id);
 
-        $user = User::findOrFail($userId);
-        $this->assertSuperAdminManageableBy($user, $admin);
-        if (! $admin->isSuperAdmin()) {
-            throw new BusinessRuleException('Only the super admin can delete users.', 403);
-        }
+            if ($action->status !== 'pending' || $action->scheduled_for->isFuture()) {
+                return false;
+            }
 
-        $userIdForEvent = (int) $user->id;
-        $userDetails = [
-            'name' => $user->name,
-            'email' => $user->email,
-            'role' => $user->role,
-        ];
+            $user = User::withTrashed()->find($action->target_user_id);
+            if ($user === null) {
+                $action->update([
+                    'status' => 'failed',
+                    'completed_at' => now(),
+                    'failure_reason' => 'The target account no longer exists.',
+                ]);
 
-        $storagePaths = DB::transaction(function () use ($admin, $user, $userDetails, $userIdForEvent): array {
-            $storagePaths = $this->storagePathsForUser($user);
+                return false;
+            }
 
-            $this->securityEvent('user_deleted_by_admin', 'success', $admin, $user);
-            $user->tokens()->delete();
-            $user->forceDelete();
-            $this->audit($admin, 'delete_user', 'User', $userIdForEvent, $userDetails);
+            $previousActive = $user->is_active;
+            if ($action->action === 'delete') {
+                $storagePaths = $this->storagePathsForUser($user);
+                $user->tokens()->delete();
+                $user->forceDelete();
+            } else {
+                $user->update(['is_active' => false]);
+            }
 
-            return $storagePaths;
+            $admin = User::withTrashed()->find($action->requested_by);
+            $details = [
+                'reason' => $action->reason,
+                'scheduled_for' => $action->scheduled_for->toIso8601String(),
+                'account_action_id' => $action->id,
+            ];
+            if ($action->action === 'suspend') {
+                $details['changes'] = [
+                    'is_active' => [
+                        'from' => $previousActive,
+                        'to' => false,
+                    ],
+                ];
+            }
+
+            AdminAuditLog::create([
+                'admin_id' => $admin?->id,
+                'actor_name' => $admin?->name ?? $action->requester_name,
+                'actor_email' => $admin?->email ?? $action->requester_email,
+                'category' => 'admin_activity',
+                'outcome' => 'success',
+                'action' => $action->action === 'delete' ? 'delete_user' : 'user_suspend',
+                'target_type' => 'User',
+                'target_id' => $action->target_user_id,
+                'details' => $details,
+                'ip_address' => null,
+                'user_agent' => null,
+            ]);
+
+            app(SecurityEventLogger::class)->record(
+                $action->action === 'delete' ? 'user_deleted_by_admin' : 'user_suspended',
+                'success',
+                $admin,
+                $action->target_user_id,
+                $details,
+            );
+
+            $action->update([
+                'status' => 'completed',
+                'completed_at' => now(),
+                'failure_reason' => null,
+            ]);
+
+            return true;
         });
 
-        if ($storagePaths !== [] && ! app(MediaStorageService::class)->deleteMany($storagePaths)) {
-            Log::warning('Unable to remove one or more files belonging to an admin-deleted user.', [
-                'user_id' => $userIdForEvent,
-                'paths' => $storagePaths,
-            ]);
+        if (! $processed) {
+            return;
         }
 
-        event(new AdminEntityChanged('user', 'deleted', $userIdForEvent, [
-            'email' => $user->email,
-            'role' => $user->role,
+        if ($actionType === 'delete') {
+            if ($storagePaths !== [] && ! app(MediaStorageService::class)->deleteMany($storagePaths)) {
+                Log::warning('Unable to remove one or more files belonging to a scheduled user deletion.', [
+                    'user_id' => $scheduledAction->target_user_id,
+                    'paths' => $storagePaths,
+                ]);
+            }
+
+            event(new AdminEntityChanged('user', 'deleted', (int) $scheduledAction->target_user_id, [
+                'email' => $scheduledAction->target_email,
+            ]));
+
+            return;
+        }
+
+        event(new AdminEntityChanged('user', 'updated', (int) $scheduledAction->target_user_id, [
+            'is_active' => false,
         ]));
     }
 
@@ -1108,39 +1172,6 @@ class AdminService
         return $query->paginate(15);
     }
 
-    /**
-     * Delete a specific rating and recalculate the worker's average.
-     */
-    public function deleteRating(User $admin, int $ratingId, ?string $reason = null): void
-    {
-        $rating = RatingReview::findOrFail($ratingId);
-
-        $workerUserId = $rating->rated_user;
-
-        DB::transaction(function () use ($rating, $admin, $reason): void {
-            $this->audit($admin, 'delete_rating', 'RatingReview', $rating->id, [
-                'score' => $rating->score,
-                'comment' => $rating->comment,
-                'rated_by' => $rating->rated_by,
-                'rated_user' => $rating->rated_user,
-                'booking_id' => $rating->booking_id,
-                'reason' => $reason,
-            ]);
-
-            $rating->delete();
-        });
-
-        // Recalculate the worker's average rating
-        $profile = WorkerProfile::where('user_id', $workerUserId)->first();
-        if ($profile) {
-            $remaining = RatingReview::where('rated_user', $workerUserId)->get();
-            $profile->update([
-                'average_rating' => $remaining->avg('score') ?? 0,
-                'total_reviews' => $remaining->count(),
-            ]);
-        }
-    }
-
     // ──────────────────────────────────────────────────────────────────────────
     // SECTION 9 — AUDIT LOGS
     // ──────────────────────────────────────────────────────────────────────────
@@ -1159,6 +1190,54 @@ class AdminService
         ?string $outcome = null,
         ?string $ipAddress = null,
     ): LengthAwarePaginator {
+        return $this->auditLogsQuery(
+            $adminId,
+            $action,
+            $targetType,
+            $dateFrom,
+            $dateTo,
+            $adminName,
+            $category,
+            $outcome,
+            $ipAddress,
+        )->paginate(25);
+    }
+
+    public function auditLogsForExport(
+        ?int $adminId,
+        ?string $action,
+        ?string $targetType = null,
+        ?string $dateFrom = null,
+        ?string $dateTo = null,
+        ?string $adminName = null,
+        ?string $category = null,
+        ?string $outcome = null,
+        ?string $ipAddress = null,
+    ): LazyCollection {
+        return $this->auditLogsQuery(
+            $adminId,
+            $action,
+            $targetType,
+            $dateFrom,
+            $dateTo,
+            $adminName,
+            $category,
+            $outcome,
+            $ipAddress,
+        )->reorder()->lazyById(500, 'admin_audit_logs.id');
+    }
+
+    private function auditLogsQuery(
+        ?int $adminId,
+        ?string $action,
+        ?string $targetType,
+        ?string $dateFrom,
+        ?string $dateTo,
+        ?string $adminName,
+        ?string $category,
+        ?string $outcome,
+        ?string $ipAddress,
+    ): Builder {
         $query = AdminAuditLog::query()
             ->with('admin:id,name,email')
             ->orderByDesc('created_at');
@@ -1205,7 +1284,7 @@ class AdminService
             $query->where('ip_address', 'like', "%{$ipAddress}%");
         }
 
-        return $query->paginate(25);
+        return $query;
     }
 
     public function deleteAuditLog(int|string $id, User $admin): void
