@@ -146,6 +146,18 @@ changes. After deploying application changes, run `php artisan queue:restart`
 and ensure your process manager starts the worker again. In local development,
 stop and start the worker after changing queued mail or notification code.
 
+### Laravel scheduler (required for scheduled account actions)
+The scheduler processes pending account suspensions and deletions once their
+24-hour notice period has elapsed. Run it locally with:
+
+```bash
+php artisan schedule:work
+```
+
+In production, configure a persistent scheduler process or a cron job to invoke
+`php artisan schedule:run` every minute. The scheduled-action records are stored
+in the database, so a restart does not erase their deadlines.
+
 ### Soketi WebSocket server (required for live tracking and real-time messaging)
 ```bash
 # Install Soketi globally (one-time)

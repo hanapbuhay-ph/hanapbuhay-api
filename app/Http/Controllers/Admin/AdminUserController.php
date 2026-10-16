@@ -4,11 +4,14 @@ namespace App\Http\Controllers\Admin;
 
 use App\Exceptions\BusinessRuleException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\ScheduleUserDeletionRequest;
 use App\Http\Requests\Admin\StoreAdminUserRequest;
 use App\Http\Requests\Admin\ToggleUserStatusRequest;
 use App\Http\Requests\Admin\UpdateAdminUserRequest;
 use App\Models\User;
 use App\Services\Admin\AdminService;
+use App\Services\Admin\AdminUserActionService;
+use App\Services\Media\MediaStorageService;
 use App\Services\SecurityEventLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,6 +20,7 @@ class AdminUserController extends Controller
 {
     public function __construct(
         private readonly AdminService $adminService,
+        private readonly AdminUserActionService $adminUserActionService,
         private readonly SecurityEventLogger $securityEventLogger,
     ) {}
 
@@ -46,6 +50,7 @@ class AdminUserController extends Controller
                 'worker_profile_id' => $user->workerProfile?->id,
                 'profile_photo_url' => self::profilePhotoUrl($user->profile_photo_path),
                 'is_active' => $user->is_active,
+                'pending_admin_action' => self::pendingAdminAction($user),
                 'created_at' => $user->created_at?->toIso8601String(),
             ];
         });
@@ -84,7 +89,7 @@ class AdminUserController extends Controller
 
         return str_starts_with($path, 'http://') || str_starts_with($path, 'https://')
             ? $path
-            : app(\App\Services\Media\MediaStorageService::class)->publicUrl($path);
+            : app(MediaStorageService::class)->publicUrl($path);
     }
 
     /**
@@ -107,6 +112,7 @@ class AdminUserController extends Controller
             'worker_profile_id' => $user->workerProfile?->id,
             'profile_photo_url' => self::profilePhotoUrl($user->profile_photo_path),
             'is_active' => $user->is_active,
+            'pending_admin_action' => self::pendingAdminAction($user),
             'is_google_account' => $user->is_google_account,
             'email_verified_at' => $user->email_verified_at?->toIso8601String(),
             'created_at' => $user->created_at?->toIso8601String(),
@@ -310,10 +316,14 @@ class AdminUserController extends Controller
         ]);
     }
 
-    public function destroy(Request $request, int|string $id): JsonResponse
+    public function destroy(ScheduleUserDeletionRequest $request, int|string $id): JsonResponse
     {
         try {
-            $this->adminService->deleteUser($id, $request->user());
+            $action = $this->adminUserActionService->scheduleDeletion(
+                $request->user(),
+                $id,
+                $request->validated('reason'),
+            );
         } catch (BusinessRuleException $e) {
             return response()->json([
                 'success' => false,
@@ -323,7 +333,12 @@ class AdminUserController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'User deleted.',
+            'message' => 'User deletion scheduled. The account will be deleted after 24 hours.',
+            'data' => [
+                'user_id' => (int) $id,
+                'action' => 'delete',
+                'scheduled_for' => $action->scheduled_for->toIso8601String(),
+            ],
         ]);
     }
 
@@ -338,6 +353,7 @@ class AdminUserController extends Controller
             'barangay_id' => $user->barangay_id,
             'barangay' => $user->barangay?->name,
             'is_active' => $user->is_active,
+            'pending_admin_action' => self::pendingAdminAction($user),
             'created_at' => $user->created_at?->toIso8601String(),
             'updated_at' => $user->updated_at?->toIso8601String(),
         ];
@@ -349,6 +365,38 @@ class AdminUserController extends Controller
      */
     public function toggleActive(Request $request, int|string $id): JsonResponse
     {
+        if ((int) $id === (int) $request->user()->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You cannot deactivate your own account.',
+            ], 422);
+        }
+
+        $user = User::findOrFail($id);
+        if ($user->isSuperAdmin() && ! $request->user()->isSuperAdmin()) {
+            $this->securityEventLogger->record(
+                'protected_account_change_denied',
+                'failure',
+                $request->user(),
+                $user->id,
+                [],
+                $request->ip(),
+                $request->userAgent(),
+            );
+
+            return response()->json([
+                'success' => false,
+                'message' => 'The super admin account can only be managed by the super admin.',
+            ], 403);
+        }
+
+        if ($user->is_active) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A reason is required to schedule a suspension. Use the toggle-status endpoint.',
+            ], 422);
+        }
+
         try {
             $user = $this->adminService->toggleActive((int) $id, $request->user());
         } catch (BusinessRuleException $e) {
@@ -372,7 +420,7 @@ class AdminUserController extends Controller
 
     /**
      * POST /api/admin/users/{id}/toggle-status  (spec URL)
-     * Suspend or reactivate a user with an explicit action + optional reason.
+     * Schedule suspension or reactivate a user with an explicit action.
      * Logs the action in admin_audit_logs.
      */
     public function toggleStatus(ToggleUserStatusRequest $request, int|string $id): JsonResponse
@@ -399,14 +447,42 @@ class AdminUserController extends Controller
                 $request->ip(),
                 $request->userAgent(),
             );
+
             return response()->json([
                 'success' => false,
                 'message' => 'The super admin account can only be managed by the super admin.',
             ], 403);
         }
 
+        if ($action === 'suspend') {
+            try {
+                $scheduledAction = $this->adminUserActionService->scheduleSuspension(
+                    $admin,
+                    $user->id,
+                    $reason,
+                );
+            } catch (BusinessRuleException $e) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $e->getMessage(),
+                ], $e->statusCode());
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'User suspension scheduled. The account will be suspended after 24 hours.',
+                'data' => [
+                    'user_id' => $user->id,
+                    'is_active' => $user->is_active,
+                    'action' => 'suspend',
+                    'scheduled_for' => $scheduledAction->scheduled_for->toIso8601String(),
+                ],
+            ]);
+        }
+
+        $this->adminUserActionService->cancelPendingSuspension($user->id);
         $previousActive = $user->is_active;
-        $newActive = ($action === 'reactivate');
+        $newActive = true;
         $user->update(['is_active' => $newActive]);
 
         $this->securityEventLogger->record(
@@ -429,15 +505,29 @@ class AdminUserController extends Controller
             'reason' => $reason,
         ]));
 
-        $message = $action === 'suspend' ? 'User account suspended.' : 'User account reactivated.';
-
         return response()->json([
             'success' => true,
-            'message' => $message,
+            'message' => 'User account reactivated.',
             'data' => [
                 'user_id' => $user->id,
                 'is_active' => $user->is_active,
             ],
         ]);
+    }
+
+    private static function pendingAdminAction(User $user): ?array
+    {
+        $action = $user->pendingAdminActions->sortByDesc('id')->first();
+
+        if ($action === null) {
+            return null;
+        }
+
+        return [
+            'id' => $action->id,
+            'action' => $action->action,
+            'reason' => $action->reason,
+            'scheduled_for' => $action->scheduled_for?->toIso8601String(),
+        ];
     }
 }
