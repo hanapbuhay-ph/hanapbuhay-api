@@ -57,7 +57,12 @@ it('admin sees one conversation per client-worker pair across bookings', functio
         ->assertJsonPath('data.conversations.0.messages_count', 2)
         ->assertJsonPath('data.conversations.0.bookings_count', 2)
         ->assertJsonPath('data.conversations.0.unread_count', 1)
+        ->assertJsonPath('data.conversations.0.last_message_has_attachment', false)
+        ->assertJsonMissingPath('data.conversations.0.last_message')
         ->assertJsonStructure(['data' => ['conversations', 'pagination']]);
+
+    expect($this->getJson('/api/admin/chat-logs')->getContent())
+        ->not->toContain('Hello admin.', 'Following up.');
 
     $this->actingAs($admin)
         ->getJson('/api/admin/chat-logs?search='.urlencode($client->name))
@@ -66,7 +71,7 @@ it('admin sees one conversation per client-worker pair across bookings', functio
         ->assertJsonPath('data.conversations.0.client.id', $client->id);
 });
 
-it('admin can inspect a thread without marking messages read', function () {
+it('admin can inspect a metadata-only thread without marking messages read', function () {
     [$admin, $client, $worker, $booking] = makeAdminChatFixture();
     $message = Message::create([
         'booking_id' => $booking->id,
@@ -81,16 +86,19 @@ it('admin can inspect a thread without marking messages read', function () {
         ->getJson("/api/admin/chat-logs/{$booking->id}")
         ->assertOk()
         ->assertJsonPath('data.messages.0.sender_role', 'client')
-        ->assertJsonPath('data.messages.0.is_flagged', false)
+        ->assertJsonPath('data.messages.0.has_attachment', true)
         ->assertJsonPath('data.pagination.total', 1);
 
-    expect($response->json('data.messages.0.attachment_url'))
-        ->toContain('/api/media/private?')
-        ->toContain('signature=');
+    $response->assertJsonMissingPath('data.messages.0.content')
+        ->assertJsonMissingPath('data.messages.0.attachment_url');
+    expect($response->getContent())
+        ->not->toContain('Attachment message.')
+        ->not->toContain('messages/example.jpg')
+        ->not->toContain('/api/media/private?');
     expect($message->fresh()->is_read)->toBeFalse();
 });
 
-it('admin can inspect all messages for a client-worker conversation without marking them read', function () {
+it('admin can inspect metadata for all messages in a client-worker conversation without marking them read', function () {
     [$admin, $client, $worker, $booking] = makeAdminChatFixture();
     $client->update(['profile_photo_path' => 'profiles/client.jpg']);
     $worker->update(['profile_photo_path' => 'profiles/worker.jpg']);
@@ -98,7 +106,8 @@ it('admin can inspect all messages for a client-worker conversation without mark
         'booking_id' => $booking->id,
         'sender_id' => $client->id,
         'receiver_id' => $worker->id,
-        'content' => 'First booking message.',
+        'content' => 'First booking secret.',
+        'attachment_path' => 'messages/first.jpg',
         'is_read' => false,
     ]);
     $secondBooking = Booking::factory()->create([
@@ -110,11 +119,11 @@ it('admin can inspect all messages for a client-worker conversation without mark
         'booking_id' => $secondBooking->id,
         'sender_id' => $worker->id,
         'receiver_id' => $client->id,
-        'content' => 'Second booking message.',
+        'content' => 'Second booking secret.',
         'is_read' => false,
     ]);
 
-    $this->actingAs($admin)
+    $response = $this->actingAs($admin)
         ->getJson("/api/admin/chat-logs/conversations/{$client->id}/{$worker->id}")
         ->assertOk()
         ->assertJsonPath('data.conversation.bookings_count', 2)
@@ -123,10 +132,15 @@ it('admin can inspect all messages for a client-worker conversation without mark
         ->assertJsonPath('data.pagination.total', 2)
         ->assertJsonPath('data.messages.0.id', $first->id)
         ->assertJsonPath('data.messages.0.booking_code', $booking->booking_code)
-        ->assertJsonPath('data.messages.0.sender_profile_photo_url', asset('storage/profiles/client.jpg'))
+        ->assertJsonPath('data.messages.0.has_attachment', true)
         ->assertJsonPath('data.messages.1.id', $second->id)
         ->assertJsonPath('data.messages.1.booking_code', $secondBooking->booking_code)
-        ->assertJsonPath('data.messages.1.sender_profile_photo_url', asset('storage/profiles/worker.jpg'));
+        ->assertJsonPath('data.messages.1.has_attachment', false)
+        ->assertJsonMissingPath('data.messages.0.content')
+        ->assertJsonMissingPath('data.messages.0.attachment_url');
+
+    expect($response->getContent())
+        ->not->toContain('First booking secret.', 'Second booking secret.', 'messages/first.jpg');
 
     expect($first->fresh()->is_read)->toBeFalse()
         ->and($second->fresh()->is_read)->toBeFalse();

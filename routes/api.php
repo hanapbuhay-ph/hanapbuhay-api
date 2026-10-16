@@ -282,6 +282,7 @@ Route::middleware(['auth:sanctum', 'active', 'admin'])->prefix('admin')->group(f
 
     // Audit logs
     Route::get('audit-logs', [AdminAuditLogController::class, 'index']);
+    Route::get('audit-logs/export', [AdminAuditLogController::class, 'export']);
     Route::delete('audit-logs', [AdminAuditLogController::class, 'destroyAll']);
     Route::delete('audit-logs/{id}', [AdminAuditLogController::class, 'destroy']);
 

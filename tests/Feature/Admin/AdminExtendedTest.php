@@ -356,45 +356,40 @@ it('admin can filter ratings by rated_user_id for clients and workers', function
         ->assertJsonPath('data.ratings.0.rated_user.id', $worker->id);
 });
 
-it('admin can delete a rating and worker average is recalculated', function () {
+it('neither admins nor super admins can remove a rating', function () {
     $admin = makeAdmin();
+    $superAdmin = User::factory()->create(['role' => 'super_admin', 'is_active' => true]);
     $worker = makeApprovedBookingWorker();
     $client = makeBookingClient();
 
     $profile = $worker->workerProfile;
     $rating = makeRating($worker, $client);
 
-    // Manually set the worker's stats
     $profile->update(['average_rating' => 4.00, 'total_reviews' => 1]);
 
     $this->actingAs($admin)
         ->deleteJson("/api/admin/ratings/{$rating->id}")
-        ->assertStatus(200)
-        ->assertJsonPath('success', true)
-        ->assertJsonPath('message', 'Rating deleted and worker average recalculated.');
+        ->assertForbidden()
+        ->assertJsonPath('message', 'Review removal is disabled.');
 
-    expect(RatingReview::find($rating->id))->toBeNull();
-    expect($profile->fresh()->total_reviews)->toBe(0);
-    expect((float) $profile->fresh()->average_rating)->toBe(0.0);
+    $this->actingAs($superAdmin)
+        ->deleteJson("/api/admin/ratings/{$rating->id}")
+        ->assertForbidden()
+        ->assertJsonPath('message', 'Review removal is disabled.');
+
+    expect(RatingReview::find($rating->id))->not->toBeNull()
+        ->and((int) $profile->fresh()->total_reviews)->toBe(1)
+        ->and((float) $profile->fresh()->average_rating)->toBe(4.0)
+        ->and(AdminAuditLog::where('action', 'delete_rating')->exists())->toBeFalse();
 });
 
-it('audit log is written when rating is deleted', function () {
-    $admin = makeAdmin();
-    $worker = makeApprovedBookingWorker();
-    $client = makeBookingClient();
-    $rating = makeRating($worker, $client);
-
-    $this->actingAs($admin)->deleteJson("/api/admin/ratings/{$rating->id}");
-
-    expect(AdminAuditLog::where('admin_id', $admin->id)->where('action', 'delete_rating')->exists())->toBeTrue();
-});
-
-it('returns 404 when deleting a non-existent rating', function () {
+it('rejects rating removal even when the requested rating does not exist', function () {
     $admin = makeAdmin();
 
     $this->actingAs($admin)
         ->deleteJson('/api/admin/ratings/99999')
-        ->assertStatus(404);
+        ->assertForbidden()
+        ->assertJsonPath('message', 'Review removal is disabled.');
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -447,6 +442,65 @@ it('admin can filter security logs by category outcome IP and actor identity', f
         ->assertJsonPath('data.logs.0.admin.email', 'unknown@example.com');
 
     expect($response->json('data.pagination.total'))->toBe(1);
+});
+
+it('exports all filtered audit and security logs as a safe CSV', function () {
+    $admin = makeAdmin();
+    AdminAuditLog::factory()->create([
+        'admin_id' => $admin->id,
+        'actor_name' => '=Audit Tester',
+        'actor_email' => 'audit@example.com',
+        'category' => 'security',
+        'outcome' => 'failure',
+        'action' => 'login_failure',
+        'target_type' => 'User',
+        'target_id' => 42,
+        'details' => ['reason' => 'invalid credentials'],
+        'ip_address' => '203.0.113.40',
+        'user_agent' => 'HanapBuhay Test Client',
+        'created_at' => now(),
+    ]);
+    AdminAuditLog::factory()->create([
+        'admin_id' => $admin->id,
+        'actor_name' => 'Different Actor',
+        'category' => 'admin_activity',
+        'outcome' => 'success',
+        'action' => 'update_user',
+        'target_type' => 'User',
+        'ip_address' => '203.0.113.41',
+        'created_at' => now(),
+    ]);
+
+    $response = $this->actingAs($admin)
+        ->get('/api/admin/audit-logs/export?category=security&outcome=failure&action=login&target_type=User&admin_name=Audit%20Tester&ip_address=203.0.113.40&date_from='.today()->toDateString().'&date_to='.today()->toDateString())
+        ->assertOk()
+        ->assertHeader('content-type', 'text/csv; charset=UTF-8');
+    $csv = $response->streamedContent();
+    $rows = array_map('str_getcsv', explode("\n", trim(substr($csv, 3))));
+
+    expect($csv)->toStartWith("\xEF\xBB\xBF")
+        ->and($rows[0])->toBe([
+            'Log ID',
+            'Category',
+            'Outcome',
+            'Action',
+            'Actor',
+            'Actor Email',
+            'Target Type',
+            'Target ID',
+            'Details',
+            'IP Address',
+            'User Agent',
+            'Created At',
+        ])
+        ->and($rows)->toHaveCount(2)
+        ->and($rows[1][4])->toBe("'=Audit Tester")
+        ->and($rows[1][8])->toBe('{"reason":"invalid credentials"}')
+        ->and($csv)->not->toContain('Different Actor');
+
+    $this->actingAs(makeBookingClient())
+        ->getJson('/api/admin/audit-logs/export')
+        ->assertForbidden();
 });
 
 it('regular admins cannot delete audit or security logs', function () {

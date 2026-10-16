@@ -19,9 +19,11 @@ use App\Services\Media\MediaStorageService;
 use App\Services\Notification\NotificationService;
 use App\Services\SecurityEventLogger;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\LazyCollection;
 use Illuminate\Support\Str;
 
 class AdminService
@@ -1108,39 +1110,6 @@ class AdminService
         return $query->paginate(15);
     }
 
-    /**
-     * Delete a specific rating and recalculate the worker's average.
-     */
-    public function deleteRating(User $admin, int $ratingId, ?string $reason = null): void
-    {
-        $rating = RatingReview::findOrFail($ratingId);
-
-        $workerUserId = $rating->rated_user;
-
-        DB::transaction(function () use ($rating, $admin, $reason): void {
-            $this->audit($admin, 'delete_rating', 'RatingReview', $rating->id, [
-                'score' => $rating->score,
-                'comment' => $rating->comment,
-                'rated_by' => $rating->rated_by,
-                'rated_user' => $rating->rated_user,
-                'booking_id' => $rating->booking_id,
-                'reason' => $reason,
-            ]);
-
-            $rating->delete();
-        });
-
-        // Recalculate the worker's average rating
-        $profile = WorkerProfile::where('user_id', $workerUserId)->first();
-        if ($profile) {
-            $remaining = RatingReview::where('rated_user', $workerUserId)->get();
-            $profile->update([
-                'average_rating' => $remaining->avg('score') ?? 0,
-                'total_reviews' => $remaining->count(),
-            ]);
-        }
-    }
-
     // ──────────────────────────────────────────────────────────────────────────
     // SECTION 9 — AUDIT LOGS
     // ──────────────────────────────────────────────────────────────────────────
@@ -1159,6 +1128,54 @@ class AdminService
         ?string $outcome = null,
         ?string $ipAddress = null,
     ): LengthAwarePaginator {
+        return $this->auditLogsQuery(
+            $adminId,
+            $action,
+            $targetType,
+            $dateFrom,
+            $dateTo,
+            $adminName,
+            $category,
+            $outcome,
+            $ipAddress,
+        )->paginate(25);
+    }
+
+    public function auditLogsForExport(
+        ?int $adminId,
+        ?string $action,
+        ?string $targetType = null,
+        ?string $dateFrom = null,
+        ?string $dateTo = null,
+        ?string $adminName = null,
+        ?string $category = null,
+        ?string $outcome = null,
+        ?string $ipAddress = null,
+    ): LazyCollection {
+        return $this->auditLogsQuery(
+            $adminId,
+            $action,
+            $targetType,
+            $dateFrom,
+            $dateTo,
+            $adminName,
+            $category,
+            $outcome,
+            $ipAddress,
+        )->reorder()->lazyById(500, 'admin_audit_logs.id');
+    }
+
+    private function auditLogsQuery(
+        ?int $adminId,
+        ?string $action,
+        ?string $targetType,
+        ?string $dateFrom,
+        ?string $dateTo,
+        ?string $adminName,
+        ?string $category,
+        ?string $outcome,
+        ?string $ipAddress,
+    ): Builder {
         $query = AdminAuditLog::query()
             ->with('admin:id,name,email')
             ->orderByDesc('created_at');
@@ -1205,7 +1222,7 @@ class AdminService
             $query->where('ip_address', 'like', "%{$ipAddress}%");
         }
 
-        return $query->paginate(25);
+        return $query;
     }
 
     public function deleteAuditLog(int|string $id, User $admin): void
