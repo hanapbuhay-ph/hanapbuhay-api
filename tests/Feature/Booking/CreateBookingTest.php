@@ -95,6 +95,80 @@ it('allows booking an unverified worker (warning is client-side only per spec)',
         ->assertJsonPath('success', true);
 });
 
+it('rejects a second client booking the same worker at the exact same time', function () {
+    Mail::fake();
+    $firstClient = makeBookingClient();
+    $secondClient = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
+    $category = ServiceCategory::factory()->create();
+    $scheduledAt = now()->addDays(3)->startOfMinute()->toDateTimeString();
+    $payload = validPayload($worker->id, $category->id);
+    $payload['scheduled_at'] = $scheduledAt;
+
+    $this->actingAs($firstClient)
+        ->postJson('/api/bookings', $payload)
+        ->assertCreated();
+
+    $this->actingAs($secondClient)
+        ->postJson('/api/bookings', $payload)
+        ->assertStatus(409)
+        ->assertJsonPath('success', false)
+        ->assertJsonPath('message', 'This worker already has a booking scheduled at that time.');
+
+    $this->assertDatabaseCount('bookings', 1);
+});
+
+it('releases a booking time after the worker declines the request', function () {
+    Mail::fake();
+    $firstClient = makeBookingClient();
+    $secondClient = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
+    $category = ServiceCategory::factory()->create();
+    $scheduledAt = now()->addDays(3)->startOfMinute()->toDateTimeString();
+    $payload = validPayload($worker->id, $category->id);
+    $payload['scheduled_at'] = $scheduledAt;
+
+    $bookingResponse = $this->actingAs($firstClient)
+        ->postJson('/api/bookings', $payload)
+        ->assertCreated();
+
+    $this->actingAs($worker)
+        ->postJson('/api/bookings/'.$bookingResponse->json('data.booking.id').'/decline')
+        ->assertOk();
+
+    $this->actingAs($secondClient)
+        ->postJson('/api/bookings', $payload)
+        ->assertCreated();
+
+    $this->assertDatabaseCount('bookings', 2);
+});
+
+it('prevents rescheduling a booking into an occupied worker time', function () {
+    Mail::fake();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
+    $category = ServiceCategory::factory()->create();
+    $firstTime = now()->addDays(3)->startOfMinute();
+    $occupiedTime = now()->addDays(4)->startOfMinute();
+    $firstPayload = validPayload($worker->id, $category->id);
+    $firstPayload['scheduled_at'] = $firstTime->toDateTimeString();
+    $occupiedPayload = validPayload($worker->id, $category->id);
+    $occupiedPayload['scheduled_at'] = $occupiedTime->toDateTimeString();
+
+    $bookingResponse = $this->actingAs($client)
+        ->postJson('/api/bookings', $firstPayload)
+        ->assertCreated();
+    $this->actingAs(makeBookingClient())
+        ->postJson('/api/bookings', $occupiedPayload)
+        ->assertCreated();
+
+    $this->actingAs($client)
+        ->postJson('/api/bookings/'.$bookingResponse->json('data.booking.id').'/reschedule', [
+            'scheduled_at' => $occupiedTime->toDateTimeString(),
+        ])
+        ->assertStatus(409);
+});
+
 it('returns 422 when scheduled_at is in the past', function () {
     $client   = makeBookingClient();
     $worker   = makeApprovedBookingWorker();

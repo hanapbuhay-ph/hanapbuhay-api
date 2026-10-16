@@ -2,11 +2,14 @@
 
 namespace App\Services\Booking;
 
+use App\Exceptions\BookingScheduleConflictException;
 use App\Models\Booking;
 use App\Models\User;
 use App\Services\Notification\NotificationService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class BookingService
 {
@@ -14,15 +17,22 @@ class BookingService
 
     public function create(array $data, int $clientId): Booking
     {
-        $booking = Booking::create([
-            'client_id' => $clientId,
-            'worker_id' => $data['worker_id'],
-            'service_category_id' => $data['service_category_id'],
-            'job_post_id' => $data['job_post_id'] ?? null,
-            'scheduled_at' => $data['scheduled_at'],
-            'notes' => $data['notes'] ?? null,
-            'status' => 'pending',
-        ]);
+        $booking = DB::transaction(function () use ($data, $clientId): Booking {
+            User::query()->whereKey($data['worker_id'])->lockForUpdate()->firstOrFail();
+
+            $scheduledAt = Carbon::parse($data['scheduled_at']);
+            $this->ensureScheduleIsAvailable($data['worker_id'], $scheduledAt);
+
+            return Booking::create([
+                'client_id' => $clientId,
+                'worker_id' => $data['worker_id'],
+                'service_category_id' => $data['service_category_id'],
+                'job_post_id' => $data['job_post_id'] ?? null,
+                'scheduled_at' => $scheduledAt,
+                'notes' => $data['notes'] ?? null,
+                'status' => 'pending',
+            ]);
+        });
 
         $booking->load(['worker.barangay', 'worker.workerProfile', 'serviceCategory']);
 
@@ -209,13 +219,23 @@ class BookingService
 
     public function reschedule(Booking $booking, \DateTimeInterface $scheduledAt): JsonResponse|Booking
     {
-        if (! in_array($booking->status, ['pending', 'accepted'])) {
-            return response()->json(['success' => false, 'message' => 'Booking cannot be rescheduled.'], 422);
+        $fresh = DB::transaction(function () use ($booking, $scheduledAt): JsonResponse|Booking {
+            User::query()->whereKey($booking->worker_id)->lockForUpdate()->firstOrFail();
+            $lockedBooking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
+
+            if (! in_array($lockedBooking->status, ['pending', 'accepted'])) {
+                return response()->json(['success' => false, 'message' => 'Booking cannot be rescheduled.'], 422);
+            }
+
+            $this->ensureScheduleIsAvailable($lockedBooking->worker_id, $scheduledAt, $lockedBooking->id);
+            $lockedBooking->update(['scheduled_at' => $scheduledAt]);
+
+            return $lockedBooking->fresh(['client.barangay', 'worker.barangay', 'serviceCategory']);
+        });
+
+        if ($fresh instanceof JsonResponse) {
+            return $fresh;
         }
-
-        $booking->update(['scheduled_at' => $scheduledAt]);
-
-        $fresh = $booking->fresh(['client.barangay', 'worker.barangay', 'serviceCategory']);
 
         $this->notifications->notify(
             $fresh->worker,
@@ -230,22 +250,27 @@ class BookingService
 
     public function reschedulePendingByAdmin(Booking $booking, \DateTimeInterface $scheduledAt): JsonResponse|Booking
     {
-        $updated = Booking::query()
-            ->whereKey($booking->id)
-            ->where('status', 'pending')
-            ->update([
-                'scheduled_at' => $scheduledAt,
-                'updated_at' => now(),
-            ]);
+        $fresh = DB::transaction(function () use ($booking, $scheduledAt): JsonResponse|Booking {
+            User::query()->whereKey($booking->worker_id)->lockForUpdate()->firstOrFail();
+            $lockedBooking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
 
-        if ($updated === 0) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Only pending bookings can be rescheduled by an admin.',
-            ], 422);
+            if ($lockedBooking->status !== 'pending') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only pending bookings can be rescheduled by an admin.',
+                ], 422);
+            }
+
+            $this->ensureScheduleIsAvailable($lockedBooking->worker_id, $scheduledAt, $lockedBooking->id);
+            $lockedBooking->update(['scheduled_at' => $scheduledAt]);
+
+            return $lockedBooking->fresh(['client.barangay', 'worker.barangay', 'serviceCategory']);
+        });
+
+        if ($fresh instanceof JsonResponse) {
+            return $fresh;
         }
 
-        $fresh = $booking->fresh(['client.barangay', 'worker.barangay', 'serviceCategory']);
         $this->notifyBookingParticipants(
             $fresh,
             'Booking Rescheduled',
@@ -254,6 +279,25 @@ class BookingService
         );
 
         return $fresh;
+    }
+
+    private function ensureScheduleIsAvailable(
+        int $workerId,
+        \DateTimeInterface $scheduledAt,
+        ?int $exceptBookingId = null,
+    ): void {
+        $query = Booking::query()
+            ->where('worker_id', $workerId)
+            ->where('scheduled_at', $scheduledAt->format('Y-m-d H:i:s'))
+            ->whereIn('status', ['pending', 'accepted', 'active']);
+
+        if ($exceptBookingId !== null) {
+            $query->whereKeyNot($exceptBookingId);
+        }
+
+        if ($query->exists()) {
+            throw new BookingScheduleConflictException;
+        }
     }
 
     private function notifyBookingParticipants(Booking $booking, string $title, string $body, string $type): void
