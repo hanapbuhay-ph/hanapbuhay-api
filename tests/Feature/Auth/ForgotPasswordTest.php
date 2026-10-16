@@ -44,7 +44,11 @@ it('returns 200 with same success message when email is not registered', functio
         'data' => ['otp_expires_in_seconds' => OtpCode::VALIDITY_SECONDS],
     ]);
 
-    Mail::assertNothingSent();
+    Mail::assertNothingQueued();
+    $this->assertDatabaseMissing('otp_codes', [
+        'email' => 'juan@email.com',
+        'type' => 'password_reset',
+    ]);
 });
 
 it('returns 422 when email field is missing', function () {
