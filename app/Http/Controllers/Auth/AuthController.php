@@ -99,6 +99,18 @@ class AuthController extends Controller
 
     public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
     {
+        return $this->requestPasswordReset($request, ['client', 'worker']);
+    }
+
+    public function forgotAdminPassword(ForgotPasswordRequest $request): JsonResponse
+    {
+        return $this->requestPasswordReset($request, ['admin', 'super_admin']);
+    }
+
+    private function requestPasswordReset(
+        ForgotPasswordRequest $request,
+        array $allowedRoles,
+    ): JsonResponse {
         $email = $request->validated('email');
         $key = 'forgot-password:'.$email;
 
@@ -111,7 +123,7 @@ class AuthController extends Controller
 
         RateLimiter::hit($key, 600);
 
-        $result = $this->authService->forgotPassword($email);
+        $result = $this->authService->forgotPassword($email, $allowedRoles);
 
         if ($result['otp'] !== null) {
             Mail::to($result['email'])->queue(
@@ -121,7 +133,7 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'If that email is registered, a password reset code has been sent.',
+            'message' => 'If an eligible account exists, a password reset code has been sent.',
             'data' => ['otp_expires_in_seconds' => OtpCode::VALIDITY_SECONDS],
         ]);
     }

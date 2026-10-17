@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\RateLimiter;
 uses(RefreshDatabase::class);
 
 const FORGOT_PASSWORD_URL = '/api/auth/password/forgot';
+const FORGOT_ADMIN_PASSWORD_URL = '/api/auth/admin/password/forgot';
 
 beforeEach(function () {
     Mail::fake();
@@ -18,13 +19,13 @@ beforeEach(function () {
 });
 
 it('returns 200 with success message for a registered email', function () {
-    User::factory()->create(['email' => 'juan@email.com']);
+    User::factory()->create(['email' => 'juan@email.com', 'role' => 'client']);
 
     $response = $this->postJson(FORGOT_PASSWORD_URL, ['email' => 'juan@email.com']);
 
     $response->assertOk()->assertJson([
         'success' => true,
-        'message' => 'If that email is registered, a password reset code has been sent.',
+        'message' => 'If an eligible account exists, a password reset code has been sent.',
         'data' => ['otp_expires_in_seconds' => OtpCode::VALIDITY_SECONDS],
     ]);
 
@@ -40,7 +41,7 @@ it('returns 200 with same success message when email is not registered', functio
 
     $response->assertOk()->assertJson([
         'success' => true,
-        'message' => 'If that email is registered, a password reset code has been sent.',
+        'message' => 'If an eligible account exists, a password reset code has been sent.',
         'data' => ['otp_expires_in_seconds' => OtpCode::VALIDITY_SECONDS],
     ]);
 
@@ -49,6 +50,61 @@ it('returns 200 with same success message when email is not registered', functio
         'email' => 'juan@email.com',
         'type' => 'password_reset',
     ]);
+});
+
+it('only sends reset codes to client and worker accounts through the app flow', function () {
+    $client = User::factory()->create(['email' => 'client@email.com', 'role' => 'client']);
+    $worker = User::factory()->create(['email' => 'worker@email.com', 'role' => 'worker']);
+    $admin = User::factory()->create(['email' => 'admin@email.com', 'role' => 'admin']);
+
+    foreach ([$client, $worker] as $user) {
+        $this->postJson(FORGOT_PASSWORD_URL, ['email' => $user->email])->assertOk();
+    }
+
+    $this->postJson(FORGOT_PASSWORD_URL, ['email' => $admin->email])
+        ->assertOk()
+        ->assertJsonPath(
+            'message',
+            'If an eligible account exists, a password reset code has been sent.',
+        );
+
+    Mail::assertQueued(OtpMail::class, 2);
+    $this->assertDatabaseCount('otp_codes', 2);
+});
+
+it('only sends reset codes to admin accounts through the web admin flow', function () {
+    $admin = User::factory()->create(['email' => 'admin@email.com', 'role' => 'admin']);
+    $superAdmin = User::factory()->create([
+        'email' => 'super-admin@email.com',
+        'role' => 'super_admin',
+    ]);
+    $client = User::factory()->create(['email' => 'client@email.com', 'role' => 'client']);
+
+    $this->postJson(FORGOT_ADMIN_PASSWORD_URL, ['email' => $admin->email])->assertOk();
+    $this->postJson(FORGOT_ADMIN_PASSWORD_URL, ['email' => $superAdmin->email])->assertOk();
+    $this->postJson(FORGOT_ADMIN_PASSWORD_URL, ['email' => $client->email])
+        ->assertOk()
+        ->assertJsonPath(
+            'message',
+            'If an eligible account exists, a password reset code has been sent.',
+        );
+    $this->postJson(FORGOT_ADMIN_PASSWORD_URL, ['email' => 'unknown@email.com'])
+        ->assertOk()
+        ->assertJsonPath(
+            'message',
+            'If an eligible account exists, a password reset code has been sent.',
+        );
+
+    Mail::assertQueued(OtpMail::class, 2);
+    Mail::assertQueued(
+        OtpMail::class,
+        fn (OtpMail $mail) => $mail->hasTo($admin->email),
+    );
+    Mail::assertQueued(
+        OtpMail::class,
+        fn (OtpMail $mail) => $mail->hasTo($superAdmin->email),
+    );
+    $this->assertDatabaseCount('otp_codes', 2);
 });
 
 it('returns 422 when email field is missing', function () {
@@ -66,7 +122,7 @@ it('returns 422 when email format is invalid', function () {
 });
 
 it('returns 429 when rate limit is exceeded', function () {
-    User::factory()->create(['email' => 'juan@email.com']);
+    User::factory()->create(['email' => 'juan@email.com', 'role' => 'client']);
 
     foreach (range(1, 3) as $i) {
         $this->postJson(FORGOT_PASSWORD_URL, ['email' => 'juan@email.com']);
@@ -81,7 +137,7 @@ it('returns 429 when rate limit is exceeded', function () {
 });
 
 it('creates a password_reset OTP record with correct type and expires_at', function () {
-    User::factory()->create(['email' => 'juan@email.com']);
+    User::factory()->create(['email' => 'juan@email.com', 'role' => 'client']);
 
     Carbon::setTestNow(Carbon::parse('2025-01-01 10:00:00'));
 
@@ -100,7 +156,7 @@ it('creates a password_reset OTP record with correct type and expires_at', funct
 });
 
 it('invalidates previous unused password_reset OTPs when a new one is requested', function () {
-    $user = User::factory()->create(['email' => 'juan@email.com']);
+    $user = User::factory()->create(['email' => 'juan@email.com', 'role' => 'client']);
 
     OtpCode::create([
         'email' => $user->email,
