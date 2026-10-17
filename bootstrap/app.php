@@ -1,8 +1,9 @@
 <?php
 
-use App\Http\Middleware\EnsureAdmin;
 use App\Http\Middleware\EnsureActive;
+use App\Http\Middleware\EnsureAdmin;
 use App\Http\Middleware\EnsureClient;
+use App\Http\Middleware\EnsureProfileComplete;
 use App\Http\Middleware\EnsureWorker;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -28,10 +29,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectGuestsTo(fn () => null);
 
         $middleware->alias([
-            'admin'  => EnsureAdmin::class,
+            'admin' => EnsureAdmin::class,
             'active' => EnsureActive::class,
             'worker' => EnsureWorker::class,
             'client' => EnsureClient::class,
+            'profile.complete' => EnsureProfileComplete::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
@@ -44,7 +46,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 return response()->json([
                     'success' => false,
                     'message' => $e->getMessage(),
-                    'errors'  => $e->errors(),
+                    'errors' => $e->errors(),
                 ], 422);
             }
         });
