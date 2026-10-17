@@ -205,9 +205,9 @@ class AuthService
         $validated = $request->validated();
 
         Log::info('completeProfile validated payload', [
-            'user_id'     => $user->id,
-            'validated'   => $validated,
-            'raw_role'    => $request->input('role'),
+            'user_id'      => $user->id,
+            'validated'    => $validated,
+            'raw_role'     => $request->input('role'),
             'raw_barangay'=> $request->input('barangay_id'),
         ]);
 
@@ -283,13 +283,16 @@ class AuthService
      * Initiates a password reset flow.
      *
      * Returns the generated OTP code and email when the user exists,
-     * or null for both when the email is not registered.
+     * or null for both when the account is not eligible for this reset flow.
      *
      * @return array{otp: string|null, email: string|null}
      */
-    public function forgotPassword(string $email): array
+    public function forgotPassword(string $email, array $allowedRoles): array
     {
-        $user = User::where('email', $email)->first();
+        $user = User::query()
+            ->where('email', $email)
+            ->whereIn('role', $allowedRoles)
+            ->first();
 
         if ($user === null) {
             return ['otp' => null, 'email' => null];
