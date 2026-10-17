@@ -16,12 +16,18 @@ use Kreait\Firebase\Messaging\Notification;
 class NotificationService
 {
     /**
-     * Create an in-app notification and deliver it to opted-in registered devices.
-     * Booking updates also queue an email when the user has email notifications enabled.
+     * Create in-app notifications and deliver them to opted-in devices.
+     * Chat messages are push-only; booking updates may also queue an email.
      */
     public function notify(User $user, string $title, string $body, string $type, array $data = []): ?HanapbuhayNotification
     {
         if (! $this->categoryEnabled($user, $type)) {
+            return null;
+        }
+
+        if ($this->isMessageNotification($type)) {
+            $this->sendPush($user, $title, $body, array_merge($data, ['type' => $type]));
+
             return null;
         }
 
@@ -118,7 +124,7 @@ class NotificationService
             return (bool) ($user->notify_booking_updates ?? true);
         }
 
-        if (in_array($type, ['new_message', 'new_chat_message', 'message'], true)) {
+        if ($this->isMessageNotification($type)) {
             return (bool) ($user->notify_messages ?? true);
         }
 
@@ -134,5 +140,10 @@ class NotificationService
         return str_starts_with($type, 'booking_')
             || str_starts_with($type, 'tracking_')
             || in_array($type, ['new_rating', 'new_review'], true);
+    }
+
+    private function isMessageNotification(string $type): bool
+    {
+        return in_array($type, ['new_message', 'new_chat_message', 'message'], true);
     }
 }

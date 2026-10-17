@@ -12,6 +12,8 @@ use Illuminate\Support\Carbon;
 
 class NotificationController extends Controller
 {
+    private const MESSAGE_NOTIFICATION_TYPES = ['new_message', 'new_chat_message', 'message'];
+
     /**
      * POST /api/notifications/register-device
      * Store or refresh the user's FCM device token.
@@ -20,7 +22,7 @@ class NotificationController extends Controller
     {
         DeviceToken::updateOrCreate(
             [
-                'user_id'   => $request->user()->id,
+                'user_id' => $request->user()->id,
                 'fcm_token' => $request->input('fcm_token'),
             ],
             [
@@ -31,7 +33,7 @@ class NotificationController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Device registered successfully.',
-            'data'    => [],
+            'data' => [],
         ]);
     }
 
@@ -42,35 +44,37 @@ class NotificationController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $user      = $request->user();
+        $user = $request->user();
         $paginator = HanapbuhayNotification::where('user_id', $user->id)
+            ->whereNotIn('type', self::MESSAGE_NOTIFICATION_TYPES)
             ->latest()
             ->paginate(20);
 
         $notifications = collect($paginator->items())->map(fn (HanapbuhayNotification $n) => [
-            'id'         => $n->id,
-            'title'      => $n->title,
-            'body'       => $n->body,
-            'type'       => $n->type,
-            'data'       => $n->data,
-            'is_read'    => $n->is_read,
+            'id' => $n->id,
+            'title' => $n->title,
+            'body' => $n->body,
+            'type' => $n->type,
+            'data' => $n->data,
+            'is_read' => $n->is_read,
             'created_at' => $n->created_at?->toIso8601String(),
         ]);
 
         $unreadCount = HanapbuhayNotification::where('user_id', $user->id)
+            ->whereNotIn('type', self::MESSAGE_NOTIFICATION_TYPES)
             ->where('is_read', false)
             ->count();
 
         return response()->json([
             'success' => true,
-            'data'    => [
+            'data' => [
                 'notifications' => $notifications,
-                'unread_count'  => $unreadCount,
-                'pagination'    => [
+                'unread_count' => $unreadCount,
+                'pagination' => [
                     'current_page' => $paginator->currentPage(),
-                    'per_page'     => $paginator->perPage(),
-                    'total'        => $paginator->total(),
-                    'last_page'    => $paginator->lastPage(),
+                    'per_page' => $paginator->perPage(),
+                    'total' => $paginator->total(),
+                    'last_page' => $paginator->lastPage(),
                 ],
             ],
         ]);

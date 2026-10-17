@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\HanapbuhayNotification;
-use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -35,8 +34,14 @@ it('returns only the authenticated user\'s notifications', function () {
     $user1 = makeBookingClient();
     $user2 = makeBookingClient();
 
-    HanapbuhayNotification::factory()->count(2)->create(['user_id' => $user1->id]);
-    HanapbuhayNotification::factory()->count(3)->create(['user_id' => $user2->id]);
+    HanapbuhayNotification::factory()->count(2)->create([
+        'user_id' => $user1->id,
+        'type' => 'booking_accepted',
+    ]);
+    HanapbuhayNotification::factory()->count(3)->create([
+        'user_id' => $user2->id,
+        'type' => 'booking_accepted',
+    ]);
 
     $response = $this->actingAs($user1)
         ->getJson('/api/notifications')
@@ -48,8 +53,15 @@ it('returns only the authenticated user\'s notifications', function () {
 it('unread_count reflects only unread notifications', function () {
     $user = makeBookingClient();
 
-    HanapbuhayNotification::factory()->count(3)->create(['user_id' => $user->id, 'is_read' => false]);
-    HanapbuhayNotification::factory()->read()->count(2)->create(['user_id' => $user->id]);
+    HanapbuhayNotification::factory()->count(3)->create([
+        'user_id' => $user->id,
+        'type' => 'booking_accepted',
+        'is_read' => false,
+    ]);
+    HanapbuhayNotification::factory()->read()->count(2)->create([
+        'user_id' => $user->id,
+        'type' => 'booking_accepted',
+    ]);
 
     $response = $this->actingAs($user)
         ->getJson('/api/notifications')
@@ -57,6 +69,29 @@ it('unread_count reflects only unread notifications', function () {
 
     expect($response->json('data.unread_count'))->toBe(3);
     expect($response->json('data.pagination.total'))->toBe(5);
+});
+
+it('excludes chat message alerts from the feed and unread count', function () {
+    $user = makeBookingClient();
+    HanapbuhayNotification::factory()->create([
+        'user_id' => $user->id,
+        'type' => 'booking_accepted',
+        'is_read' => false,
+    ]);
+    HanapbuhayNotification::factory()->count(2)->create([
+        'user_id' => $user->id,
+        'type' => 'new_chat_message',
+        'is_read' => false,
+    ]);
+
+    $response = $this->actingAs($user)
+        ->getJson('/api/notifications')
+        ->assertOk();
+
+    expect($response->json('data.unread_count'))->toBe(1)
+        ->and($response->json('data.pagination.total'))->toBe(1)
+        ->and(collect($response->json('data.notifications'))->pluck('type')->all())
+        ->toBe(['booking_accepted']);
 });
 
 it('returns empty list with zero unread when user has no notifications', function () {
@@ -74,11 +109,13 @@ it('notifications are returned most recent first', function () {
     $user = makeBookingClient();
 
     $older = HanapbuhayNotification::factory()->create([
-        'user_id'    => $user->id,
+        'user_id' => $user->id,
+        'type' => 'booking_accepted',
         'created_at' => now()->subMinutes(10),
     ]);
     $newer = HanapbuhayNotification::factory()->create([
-        'user_id'    => $user->id,
+        'user_id' => $user->id,
+        'type' => 'booking_declined',
         'created_at' => now(),
     ]);
 
@@ -94,7 +131,7 @@ it('notifications are returned most recent first', function () {
 // ══════════════════════════════════════════════════════════════════════════════
 
 it('marks a single notification as read', function () {
-    $user         = makeBookingClient();
+    $user = makeBookingClient();
     $notification = HanapbuhayNotification::factory()->create([
         'user_id' => $user->id,
         'is_read' => false,
@@ -111,7 +148,7 @@ it('marks a single notification as read', function () {
 });
 
 it('marking an already-read notification is idempotent (returns 200)', function () {
-    $user         = makeBookingClient();
+    $user = makeBookingClient();
     $notification = HanapbuhayNotification::factory()->read()->create(['user_id' => $user->id]);
 
     $this->actingAs($user)
@@ -121,8 +158,8 @@ it('marking an already-read notification is idempotent (returns 200)', function 
 });
 
 it('returns 404 when marking another user\'s notification as read', function () {
-    $user1        = makeBookingClient();
-    $user2        = makeBookingClient();
+    $user1 = makeBookingClient();
+    $user2 = makeBookingClient();
     $notification = HanapbuhayNotification::factory()->create(['user_id' => $user2->id]);
 
     $this->actingAs($user1)

@@ -219,7 +219,7 @@ it('does not send push when push or the notification category is disabled', func
     $service->sendPush($user, 'New Message', 'Hello', ['type' => 'new_chat_message']);
 });
 
-it('stores and emails enabled booking updates but never emails messages', function () {
+it('stores enabled booking updates but keeps chat messages push-only', function () {
     Mail::fake();
     $user = makeBookingClient();
     $service = new NotificationService;
@@ -230,12 +230,37 @@ it('stores and emails enabled booking updates but never emails messages', functi
         'Your booking was accepted.',
         'booking_accepted',
     );
-    $service->notify($user, 'New Message', 'Hello', 'new_chat_message');
+    $messageNotification = $service->notify($user, 'New Message', 'Hello', 'new_chat_message');
 
     expect($bookingNotification)->toBeInstanceOf(HanapbuhayNotification::class)
-        ->and(HanapbuhayNotification::where('user_id', $user->id)->count())->toBe(2);
+        ->and($messageNotification)->toBeNull()
+        ->and(HanapbuhayNotification::where('user_id', $user->id)->count())->toBe(1);
 
     Mail::assertQueued(NotificationEmail::class, 1);
+});
+
+it('sends opted-in chat messages as device push notifications only', function () {
+    $messaging = mock(Messaging::class);
+    app()->instance(Messaging::class, $messaging);
+    $messaging->shouldReceive('send')->once()->andReturn([]);
+
+    $user = makeBookingClient();
+    DeviceToken::create([
+        'user_id' => $user->id,
+        'fcm_token' => 'valid-token-xyz',
+        'device_type' => 'android',
+    ]);
+
+    $notification = (new NotificationService)->notify(
+        $user,
+        'New Message',
+        'You received a message.',
+        'new_chat_message',
+        ['conversation_id' => '42'],
+    );
+
+    expect($notification)->toBeNull()
+        ->and(HanapbuhayNotification::where('user_id', $user->id)->count())->toBe(0);
 });
 
 it('sends one device push when an in-app notification is created', function () {
