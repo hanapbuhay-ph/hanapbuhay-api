@@ -191,7 +191,11 @@ class AdminService
             ->orderByDesc('created_at');
 
         if ($role !== null) {
-            $query->where('role', $role);
+            if ($role === 'incomplete') {
+                $query->whereNull('role');
+            } else {
+                $query->where('role', $role);
+            }
         }
 
         if ($isActive !== null) {
