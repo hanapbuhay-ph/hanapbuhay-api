@@ -15,15 +15,15 @@ uses(RefreshDatabase::class);
 
 function makeBookingPair(string $status = 'active'): array
 {
-    $client   = makeBookingClient();
-    $worker   = makeApprovedBookingWorker();
+    $client = makeBookingClient();
+    $worker = makeApprovedBookingWorker();
     $category = ServiceCategory::factory()->create();
 
     $booking = Booking::factory()->create([
-        'client_id'           => $client->id,
-        'worker_id'           => $worker->id,
+        'client_id' => $client->id,
+        'worker_id' => $worker->id,
         'service_category_id' => $category->id,
-        'status'              => $status,
+        'status' => $status,
     ]);
 
     return compact('client', 'worker', 'booking');
@@ -36,11 +36,11 @@ function seedMessage(Booking $booking, User $sender, bool $isRead = false): Mess
         : $booking->client_id;
 
     return Message::create([
-        'booking_id'  => $booking->id,
-        'sender_id'   => $sender->id,
+        'booking_id' => $booking->id,
+        'sender_id' => $sender->id,
         'receiver_id' => $receiverId,
-        'content'     => 'Hello there!',
-        'is_read'     => $isRead,
+        'content' => 'Hello there!',
+        'is_read' => $isRead,
     ]);
 }
 
@@ -114,7 +114,7 @@ it('inbox does not show bookings with no messages', function () {
 });
 
 it('inbox orders conversations by most recent message first', function () {
-    $client   = makeBookingClient();
+    $client = makeBookingClient();
     $category = ServiceCategory::factory()->create();
 
     $worker1 = makeApprovedBookingWorker();
@@ -124,13 +124,13 @@ it('inbox orders conversations by most recent message first', function () {
     $booking2 = Booking::factory()->create(['client_id' => $client->id, 'worker_id' => $worker2->id, 'service_category_id' => $category->id]);
 
     // booking1 has older message, booking2 has newer
-    $oldMsg = new Message();
+    $oldMsg = new Message;
     $oldMsg->forceFill(['booking_id' => $booking1->id, 'sender_id' => $client->id, 'receiver_id' => $worker1->id, 'content' => 'Old', 'is_read' => false]);
     $oldMsg->created_at = now()->subHour();
     $oldMsg->updated_at = now()->subHour();
     $oldMsg->save();
 
-    $newMsg = new Message();
+    $newMsg = new Message;
     $newMsg->forceFill(['booking_id' => $booking2->id, 'sender_id' => $client->id, 'receiver_id' => $worker2->id, 'content' => 'New', 'is_read' => false]);
     $newMsg->created_at = now();
     $newMsg->updated_at = now();
@@ -158,8 +158,8 @@ it('returns thread via spec URL GET /api/messages/{bookingId}', function () {
         ->assertJsonPath('success', true)
         ->assertJsonStructure([
             'data' => [
-                'booking'    => ['id', 'booking_code', 'status'],
-                'messages'   => [['id', 'sender_id', 'sender_name', 'content', 'attachment_url', 'is_read', 'created_at']],
+                'booking' => ['id', 'booking_code', 'status'],
+                'messages' => [['id', 'sender_id', 'sender_name', 'content', 'attachment_url', 'is_read', 'created_at']],
                 'pagination' => ['current_page', 'per_page', 'total', 'last_page'],
             ],
         ]);
@@ -211,7 +211,7 @@ it('returns 404 on spec thread URL for non-existent booking', function () {
 // POST /api/messages/{bookingId}  — spec URL send
 // ══════════════════════════════════════════════════════════════════════════════
 
-it('sends a text message and notifies the receiver', function () {
+it('sends a text message without adding it to in-app alerts', function () {
     ['client' => $client, 'worker' => $worker, 'booking' => $booking] = makeBookingPair();
 
     $this->actingAs($client)
@@ -222,7 +222,7 @@ it('sends a text message and notifies the receiver', function () {
             'data' => ['message' => ['id', 'sender_id', 'sender_name', 'content', 'attachment_url', 'is_read', 'created_at']],
         ]);
 
-    $this->assertDatabaseHas('hanapbuhay_notifications', [
+    $this->assertDatabaseMissing('hanapbuhay_notifications', [
         'user_id' => $worker->id,
         'type' => 'new_chat_message',
     ]);
